@@ -3,27 +3,11 @@
 # Core Streamlit
 streamlit>=1.28.0
 
-# Excel processing (existing dependency)
+# Excel processing (required)
 openpyxl>=3.0.0
 
-# Additional utilities for web app
+# Data processing (required)
 pandas>=1.5.0
-numpy>=1.21.0
 
-# File handling and validation
-python-magic>=0.4.27
-
-# Progress tracking
-tqdm>=4.64.0
-
-# Async support for better UX
-asyncio
-
-# Optional: Better error display
-rich>=13.0.0
-
-# Session state management
-streamlit-session-state>=0.1.0
-
-# File download helper
-streamlit-download-button>=0.1.0
+# Standard library (remove asyncio - built-in)
+# File handling (remove python-magic - not needed for .xlsx validation)
