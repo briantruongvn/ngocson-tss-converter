@@ -510,6 +510,67 @@ CUSTOM_CSS = """
     .css-1d391kg {
         z-index: 1;
     }
+    
+    /* Hide GitHub icon and related elements */
+    [data-testid="stToolbar"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* Hide GitHub button specifically */
+    button[title="View app source on GitHub"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* Hide the entire toolbar area */
+    .stToolbar {
+        display: none !important;
+    }
+    
+    /* Hide Share, Star, Edit buttons */
+    [aria-label="Share"],
+    [aria-label="Star"],
+    [aria-label="Edit"],
+    [title="Star"],
+    [title="Share"],
+    [title="Edit"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* Hide Manage app section */
+    [data-testid="manage-app-button"],
+    .css-1kyxreq,
+    .css-k1vhr4 {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* Hide top toolbar completely */
+    .css-1rs6os.edgvbvh3,
+    .css-18e3th9,
+    .css-1d391kg.e1fqkh3o3 {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        overflow: hidden !important;
+    }
+    
+    /* Hide any GitHub related elements */
+    [href*="github.com"],
+    a[href*="github"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* Generic toolbar hiding */
+    header[data-testid="stToolbar"],
+    .stToolbar,
+    .toolbar {
+        display: none !important;
+        visibility: hidden !important;
+    }
 </style>
 """
 
