@@ -52,18 +52,38 @@ class DataExtractor:
             List of (row, col) tuples where headers are found
         """
         found_cells = []
+        cells_checked = 0
+        max_cells = 10000  # Safety limit to prevent infinite search
         
-        # Search through all cells in the worksheet
-        for row in worksheet.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str):
-                    cell_value = cell.value.strip()
-                    for header in headers:
-                        if header.lower() in cell_value.lower():
-                            found_cells.append((cell.row, cell.column))
-                            logger.info(f"Found '{header}' at {worksheet.title}!{cell.coordinate}: {cell.value}")
-                            break
+        try:
+            # Search through all cells in the worksheet (with limits)
+            for row_num in range(1, min(worksheet.max_row + 1, 100)):  # Limit to first 100 rows
+                for col_num in range(1, min(worksheet.max_column + 1, 50)):  # Limit to first 50 columns
+                    cells_checked += 1
+                    if cells_checked > max_cells:
+                        logger.warning(f"Header search timeout in {worksheet.title}: checked {cells_checked} cells")
+                        break
+                        
+                    try:
+                        cell = worksheet.cell(row=row_num, column=col_num)
+                        if cell.value and isinstance(cell.value, str):
+                            cell_value = cell.value.strip()
+                            for header in headers:
+                                if header.lower() in cell_value.lower():
+                                    found_cells.append((cell.row, cell.column))
+                                    logger.info(f"Found '{header}' at {worksheet.title}!{cell.coordinate}: {cell.value}")
+                                    break
+                    except Exception as cell_error:
+                        logger.debug(f"Error reading cell {worksheet.title}!{row_num},{col_num}: {cell_error}")
+                        continue
+                        
+                if cells_checked > max_cells:
+                    break
+                    
+        except Exception as e:
+            logger.error(f"Error searching headers in {worksheet.title}: {e}")
         
+        logger.debug(f"Header search in {worksheet.title}: checked {cells_checked} cells, found {len(found_cells)} matches")
         return found_cells
     
     def clean_value(self, value: str) -> str:
@@ -134,22 +154,46 @@ class DataExtractor:
         """
         data = []
         current_row = start_row + 1  # Start from next row after header
+        max_rows = 1000  # Safety limit to prevent infinite loops
+        rows_checked = 0
         
-        while True:
-            cell = worksheet.cell(row=current_row, column=start_col)
-            if cell.value is None or (isinstance(cell.value, str) and cell.value.strip() == ""):
-                break
-            
-            # Convert value to string and clean it
-            value = str(cell.value).strip()
-            if value:
-                # Parse multi-value cells
-                parsed_values = self.parse_multi_value_cell(value)
-                data.extend(parsed_values)
-                logger.debug(f"Extracted from {worksheet.title}!{cell.coordinate}: {len(parsed_values)} items")
-            
-            current_row += 1
+        try:
+            while rows_checked < max_rows:
+                cell = worksheet.cell(row=current_row, column=start_col)
+                
+                # Check if we've reached end of data
+                if cell.value is None or (isinstance(cell.value, str) and cell.value.strip() == ""):
+                    logger.debug(f"Stopping extraction at {worksheet.title}!{cell.coordinate}: empty cell")
+                    break
+                
+                # Convert value to string and clean it
+                value = str(cell.value).strip()
+                if value:
+                    # Parse multi-value cells
+                    try:
+                        parsed_values = self.parse_multi_value_cell(value)
+                        data.extend(parsed_values)
+                        logger.debug(f"Extracted from {worksheet.title}!{cell.coordinate}: {len(parsed_values)} items: {parsed_values}")
+                    except Exception as parse_error:
+                        logger.warning(f"Error parsing cell {worksheet.title}!{cell.coordinate}: {parse_error}")
+                        # Continue with raw value
+                        cleaned_value = self.clean_value(value)
+                        if cleaned_value:
+                            data.append(cleaned_value)
+                
+                current_row += 1
+                rows_checked += 1
+                
+                # Check if we're going beyond reasonable worksheet bounds
+                if current_row > worksheet.max_row + 100:
+                    logger.warning(f"Stopping extraction: exceeded max_row + 100 at row {current_row}")
+                    break
+                    
+        except Exception as e:
+            logger.error(f"Error during data extraction at {worksheet.title}!{current_row},{start_col}: {e}")
+            # Return what we have so far
         
+        logger.debug(f"Finished extracting from column {start_col}, found {len(data)} items")
         return data
     
     def remove_duplicates(self, name_data: List[str], number_data: List[str]) -> Tuple[List[str], List[str]]:
@@ -240,21 +284,40 @@ class DataExtractor:
         # Process each worksheet in source file
         for sheet_name in source_wb.sheetnames:
             logger.info(f"Processing sheet: {sheet_name}")
-            worksheet = source_wb[sheet_name]
-            
-            # Find article name headers
-            name_cells = self.find_header_cells(worksheet, self.name_headers)
-            for row, col in name_cells:
-                names = self.extract_data_vertical(worksheet, row, col)
-                all_names.extend(names)
-                logger.info(f"Extracted {len(names)} names from {sheet_name}!{worksheet.cell(row, col).coordinate}")
-            
-            # Find article number headers  
-            number_cells = self.find_header_cells(worksheet, self.number_headers)
-            for row, col in number_cells:
-                numbers = self.extract_data_vertical(worksheet, row, col)
-                all_numbers.extend(numbers)
-                logger.info(f"Extracted {len(numbers)} numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}")
+            try:
+                worksheet = source_wb[sheet_name]
+                
+                # Find article name headers
+                try:
+                    name_cells = self.find_header_cells(worksheet, self.name_headers)
+                    for row, col in name_cells:
+                        try:
+                            names = self.extract_data_vertical(worksheet, row, col)
+                            all_names.extend(names)
+                            logger.info(f"Extracted {len(names)} names from {sheet_name}!{worksheet.cell(row, col).coordinate}")
+                        except Exception as e:
+                            logger.error(f"Error extracting names from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
+                            continue
+                except Exception as e:
+                    logger.error(f"Error finding name headers in sheet {sheet_name}: {e}")
+                
+                # Find article number headers  
+                try:
+                    number_cells = self.find_header_cells(worksheet, self.number_headers)
+                    for row, col in number_cells:
+                        try:
+                            numbers = self.extract_data_vertical(worksheet, row, col)
+                            all_numbers.extend(numbers)
+                            logger.info(f"Extracted {len(numbers)} numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}")
+                        except Exception as e:
+                            logger.error(f"Error extracting numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
+                            continue
+                except Exception as e:
+                    logger.error(f"Error finding number headers in sheet {sheet_name}: {e}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing sheet {sheet_name}: {e}")
+                continue
         
         # Remove duplicates
         unique_names, unique_numbers = self.remove_duplicates(all_names, all_numbers)
