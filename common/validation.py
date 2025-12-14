@@ -4,7 +4,6 @@ Provides robust validation for file formats, structure, and data integrity.
 """
 
 import os
-import mimetypes
 from pathlib import Path
 from typing import Union, List, Optional, Dict, Any
 import logging
@@ -32,10 +31,6 @@ class FileValidator:
     """
     
     SUPPORTED_EXTENSIONS = ['.xlsx']
-    SUPPORTED_MIMETYPES = [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel'
-    ]
     
     @classmethod
     def validate_file_exists(cls, file_path: Union[str, Path]) -> Path:
@@ -100,14 +95,8 @@ class FileValidator:
                 actual_format=path.suffix
             )
         
-        # Check MIME type if available
-        mime_type, _ = mimetypes.guess_type(str(path))
-        if mime_type and mime_type not in cls.SUPPORTED_MIMETYPES:
-            raise FileFormatError(
-                file_path=str(path),
-                expected_format="Excel format",
-                actual_format=mime_type
-            )
+        # File extension validation already done above
+        # MIME type check removed for deployment compatibility
         
         # Try to open with openpyxl to validate structure
         if not OPENPYXL_AVAILABLE:

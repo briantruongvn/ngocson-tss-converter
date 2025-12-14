@@ -1,13 +1,2 @@
-# TSS Converter Streamlit Web App Dependencies
-
-# Core Streamlit
-streamlit>=1.28.0
-
-# Excel processing (required)
-openpyxl>=3.0.0
-
-# Data processing (required)
-pandas>=1.5.0
-
-# Standard library (remove asyncio - built-in)
-# File handling (remove python-magic - not needed for .xlsx validation)
+streamlit==1.29.0
+openpyxl==3.1.2
