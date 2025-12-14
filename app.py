@@ -78,7 +78,6 @@ def process_file_sync(file_data: bytes, filename: str):
         
         # Create progress placeholder
         progress_placeholder = st.empty()
-        status_placeholder = st.empty()
         
         def update_ui_progress(progress_data):
             """Update UI progress synchronously"""
@@ -94,11 +93,6 @@ def process_file_sync(file_data: bytes, filename: str):
                 progress_percentage = int((completed_steps / 5) * 100)
                 st.progress(completed_steps / 5, text=f"📊 Progress: {progress_percentage}% ({completed_steps}/5 steps completed)")
             
-            with status_placeholder.container():
-                if progress_data.get("error"):
-                    st.error(f"❌ {message}")
-                else:
-                    st.info(f"⏳ Step {step}: {message}")
         
         # Create progress callback
         progress_callback = ProgressCallback(update_ui_progress)
