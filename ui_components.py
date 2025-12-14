@@ -13,6 +13,100 @@ from config_streamlit import get_custom_css, get_step_config, STREAMLIT_CONFIG
 def inject_custom_css():
     """Inject custom CSS styling into Streamlit app"""
     st.markdown(get_custom_css(), unsafe_allow_html=True)
+    
+    # Additional JavaScript to hide Streamlit Cloud elements
+    hide_streamlit_js = """
+    <script>
+    function hideStreamlitCloudElements() {
+        // More specific selectors for Streamlit Cloud
+        const elementsToHide = [
+            // Toolbar area
+            '[data-testid="stToolbar"]',
+            '[data-testid="stHeader"]', 
+            '[data-testid="stDecoration"]',
+            'header[data-testid="stHeader"]',
+            
+            // Buttons in toolbar
+            'button[title="View app source on GitHub"]',
+            'button[aria-label="Share"]',
+            'button[aria-label="Star"]', 
+            'button[aria-label="Edit"]',
+            'button[title="Share"]',
+            'button[title="Star"]',
+            'button[title="Edit"]',
+            
+            // Manage app
+            '[data-testid="manage-app-button"]',
+            'button:has-text("Manage app")',
+            
+            // GitHub links
+            'a[href*="github.com"]',
+            
+            // Generic CSS classes
+            '.stToolbar',
+            '.css-1rs6os', 
+            '.css-18e3th9',
+            '.css-1d391kg',
+            '.css-1kyxreq',
+            '.css-k1vhr4'
+        ];
+        
+        elementsToHide.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+                if (el) {
+                    el.style.display = 'none !important';
+                    el.style.visibility = 'hidden !important';
+                    el.style.opacity = '0 !important';
+                    el.style.height = '0 !important';
+                    el.style.width = '0 !important';
+                    el.style.overflow = 'hidden !important';
+                    el.remove(); // Remove from DOM completely
+                }
+            });
+        });
+        
+        // Hide parent containers that might contain these elements
+        const parentContainers = document.querySelectorAll('header, [role="banner"]');
+        parentContainers.forEach(container => {
+            const hasUnwantedContent = container.textContent.includes('Share') || 
+                                     container.textContent.includes('Star') ||
+                                     container.textContent.includes('Edit') ||
+                                     container.textContent.includes('Manage app') ||
+                                     container.querySelector('a[href*="github"]');
+            if (hasUnwantedContent) {
+                container.style.display = 'none !important';
+                container.remove();
+            }
+        });
+    }
+    
+    // Run multiple times to ensure elements are hidden
+    hideStreamlitCloudElements();
+    setTimeout(hideStreamlitCloudElements, 100);
+    setTimeout(hideStreamlitCloudElements, 500);
+    setTimeout(hideStreamlitCloudElements, 1000);
+    setTimeout(hideStreamlitCloudElements, 2000);
+    
+    // Create observer for dynamic content
+    const observer = new MutationObserver(hideStreamlitCloudElements);
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'id']
+    });
+    
+    // Run on various events
+    window.addEventListener('load', hideStreamlitCloudElements);
+    document.addEventListener('DOMContentLoaded', hideStreamlitCloudElements);
+    
+    // Aggressive periodic cleanup
+    setInterval(hideStreamlitCloudElements, 500);
+    </script>
+    """
+    
+    st.markdown(hide_streamlit_js, unsafe_allow_html=True)
 
 def render_app_header():
     """Render main application header"""

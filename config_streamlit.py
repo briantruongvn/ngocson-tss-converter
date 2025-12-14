@@ -572,6 +572,93 @@ CUSTOM_CSS = """
         visibility: hidden !important;
     }
 </style>
+
+<script>
+    // Function to hide elements dynamically
+    function hideStreamlitElements() {
+        // Hide toolbar elements
+        const toolbarSelectors = [
+            '[data-testid="stToolbar"]',
+            'header[data-testid="stHeader"]',
+            '.stToolbar',
+            '[data-testid="stDecoration"]',
+            '.css-1rs6os',
+            '.css-18e3th9',
+            '.css-1d391kg'
+        ];
+        
+        toolbarSelectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(element => {
+                element.style.display = 'none';
+                element.style.visibility = 'hidden';
+                element.style.height = '0';
+                element.style.overflow = 'hidden';
+            });
+        });
+        
+        // Hide specific buttons by text content
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(button => {
+            const buttonText = button.textContent.toLowerCase();
+            if (buttonText.includes('share') || 
+                buttonText.includes('star') || 
+                buttonText.includes('edit') ||
+                buttonText.includes('manage app') ||
+                button.getAttribute('title')?.includes('GitHub')) {
+                button.style.display = 'none';
+                button.style.visibility = 'hidden';
+            }
+        });
+        
+        // Hide GitHub links
+        const links = document.querySelectorAll('a[href*="github"]');
+        links.forEach(link => {
+            link.style.display = 'none';
+            link.style.visibility = 'hidden';
+        });
+        
+        // Hide manage app section
+        const manageButtons = document.querySelectorAll('[data-testid="manage-app-button"], .css-1kyxreq, .css-k1vhr4');
+        manageButtons.forEach(button => {
+            button.style.display = 'none';
+            button.style.visibility = 'hidden';
+        });
+        
+        // Hide entire header if it contains unwanted elements
+        const headers = document.querySelectorAll('header');
+        headers.forEach(header => {
+            if (header.querySelector('[title*="GitHub"]') || 
+                header.textContent.includes('Share') ||
+                header.textContent.includes('Star')) {
+                header.style.display = 'none';
+                header.style.visibility = 'hidden';
+            }
+        });
+    }
+    
+    // Run immediately and on DOM changes
+    hideStreamlitElements();
+    
+    // Use MutationObserver to hide elements as they're added
+    const observer = new MutationObserver(function(mutations) {
+        hideStreamlitElements();
+    });
+    
+    // Start observing
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true
+    });
+    
+    // Also run on page load and window events
+    document.addEventListener('DOMContentLoaded', hideStreamlitElements);
+    window.addEventListener('load', hideStreamlitElements);
+    
+    // Run periodically as backup
+    setInterval(hideStreamlitElements, 1000);
+</script>
 """
 
 # Step configuration for UI display
