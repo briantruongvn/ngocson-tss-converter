@@ -19,6 +19,7 @@ from ui_components import (
     render_info_message, clear_temp_files_button
 )
 from streamlit_pipeline import StreamlitTSSPipeline, ProgressCallback
+from common.rate_limiter import check_request_allowed, RateLimitConfig, get_rate_limiter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +33,44 @@ st.set_page_config(
     initial_sidebar_state=STREAMLIT_CONFIG["initial_sidebar_state"]
 )
 
+def get_client_info():
+    """Get client IP and session ID for rate limiting"""
+    try:
+        # Try to get real client IP from headers (for deployment behind proxy)
+        client_ip = st.context.headers.get("x-forwarded-for", "")
+        if not client_ip:
+            client_ip = st.context.headers.get("x-real-ip", "127.0.0.1")
+    except:
+        # Fallback for local development
+        client_ip = "127.0.0.1"
+    
+    # Use session ID from Streamlit
+    session_id = st.session_state.get('session_id', f"session_{int(time.time())}")
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = session_id
+    
+    return client_ip, session_id
+
+def check_rate_limits() -> bool:
+    """Check rate limits and return True if request is allowed"""
+    client_ip, session_id = get_client_info()
+    
+    allowed, reason = check_request_allowed(client_ip, session_id)
+    
+    if not allowed:
+        st.error(f"🚫 {reason}")
+        st.info("Please wait a few minutes before trying again.")
+        
+        # Show rate limiter stats for debugging (only in development)
+        if STREAMLIT_CONFIG.get("show_error_details", False):
+            limiter = get_rate_limiter()
+            stats = limiter.get_stats()
+            st.write("Debug - Rate Limiter Stats:", stats)
+        
+        return False
+    
+    return True
+
 def initialize_session_state():
     """Initialize Streamlit session state variables"""
     if 'pipeline' not in st.session_state:
@@ -44,7 +83,7 @@ def initialize_session_state():
         st.session_state.progress_data = {
             "current_step": 0,
             "step_status": {f"step{i}": "pending" for i in range(1, 6)},
-            "message": "Sẵn sàng xử lý",
+            "message": "Ready to process",
             "error": False
         }
     
@@ -174,6 +213,10 @@ def main():
                 }
                 
             if st.session_state.get('uploaded_file_info') and st.button("🚀 Start Conversion", type="primary"):
+                # Check rate limits before processing
+                if not check_rate_limits():
+                    return  # Stop execution if rate limited
+                
                 file_info = st.session_state.uploaded_file_info
                 file_data = file_info['data']
                 filename = file_info['name']

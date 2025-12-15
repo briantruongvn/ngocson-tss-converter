@@ -4,6 +4,8 @@ Provides robust validation for file formats, structure, and data integrity.
 """
 
 import os
+import hashlib
+import re
 from pathlib import Path
 from typing import Union, List, Optional, Dict, Any
 import logging
@@ -26,11 +28,36 @@ logger = logging.getLogger(__name__)
 
 class FileValidator:
     """
-    File validation utilities for Excel files
-    Validates format, accessibility, and basic structure
+    Enhanced file validation utilities for Excel files
+    Validates format, accessibility, content security, and basic structure
     """
     
     SUPPORTED_EXTENSIONS = ['.xlsx']
+    
+    # Excel file signatures (magic bytes)
+    EXCEL_SIGNATURES = [
+        b'PK\x03\x04',  # ZIP-based format (xlsx)
+        b'\xD0\xCF\x11\xE0',  # OLE2 format (older Excel)
+    ]
+    
+    # Maximum file size (50MB)
+    MAX_FILE_SIZE = 50 * 1024 * 1024
+    
+    # Maximum number of worksheets
+    MAX_WORKSHEETS = 100
+    
+    # Suspicious patterns to detect malicious content
+    SUSPICIOUS_PATTERNS = [
+        rb'<script.*?>',
+        rb'javascript:',
+        rb'vbscript:',
+        rb'data:text/html',
+        rb'ActiveXObject',
+        rb'Shell\.Application',
+        rb'WScript\.Shell',
+        rb'eval\(',
+        rb'document\.write',
+    ]
     
     @classmethod
     def validate_file_exists(cls, file_path: Union[str, Path]) -> Path:
@@ -72,9 +99,141 @@ class FileValidator:
         return path
     
     @classmethod
+    def validate_file_security(cls, file_path: Union[str, Path]) -> Path:
+        """
+        Enhanced security validation for uploaded files
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            Path object if secure
+            
+        Raises:
+            FileFormatError: If file is potentially malicious
+        """
+        path = cls.validate_file_exists(file_path)
+        
+        # Check file size
+        file_size = path.stat().st_size
+        if file_size > cls.MAX_FILE_SIZE:
+            raise FileFormatError(
+                file_path=str(path),
+                expected_format=f"File size <= {cls.MAX_FILE_SIZE // (1024*1024)}MB",
+                actual_format=f"File size: {file_size // (1024*1024)}MB"
+            )
+        
+        # Check if file is empty
+        if file_size == 0:
+            raise FileFormatError(
+                file_path=str(path),
+                expected_format="Non-empty file",
+                actual_format="Empty file"
+            )
+        
+        # Validate file signature
+        cls._validate_file_signature(path)
+        
+        # Scan for malicious content
+        cls._scan_malicious_content(path)
+        
+        # Validate filename
+        cls._validate_filename(path.name)
+        
+        return path
+    
+    @classmethod
+    def _validate_file_signature(cls, file_path: Path) -> None:
+        """Validate file magic bytes"""
+        try:
+            with open(file_path, 'rb') as f:
+                header = f.read(8)
+                
+            if not header:
+                raise FileFormatError(
+                    file_path=str(file_path),
+                    expected_format="Valid file header",
+                    actual_format="Empty file"
+                )
+            
+            # Check if header matches Excel signatures
+            valid_signature = any(header.startswith(sig) for sig in cls.EXCEL_SIGNATURES)
+            if not valid_signature:
+                raise FileFormatError(
+                    file_path=str(file_path),
+                    expected_format="Valid Excel file signature",
+                    actual_format=f"Invalid signature: {header[:4].hex()}"
+                )
+                
+        except IOError as e:
+            raise FileFormatError(
+                file_path=str(file_path),
+                expected_format="Readable file",
+                actual_format=f"IO Error: {str(e)}"
+            )
+    
+    @classmethod
+    def _scan_malicious_content(cls, file_path: Path) -> None:
+        """Scan file content for suspicious patterns"""
+        try:
+            # Read file in chunks to handle large files
+            chunk_size = 8192
+            with open(file_path, 'rb') as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                        
+                    # Check for suspicious patterns
+                    for pattern in cls.SUSPICIOUS_PATTERNS:
+                        if re.search(pattern, chunk, re.IGNORECASE):
+                            logger.warning(f"Suspicious pattern detected in {file_path}: {pattern}")
+                            raise FileFormatError(
+                                file_path=str(file_path),
+                                expected_format="Clean file content",
+                                actual_format="Potentially malicious content detected"
+                            )
+                            
+        except IOError as e:
+            logger.error(f"Error scanning file {file_path}: {e}")
+            raise FileFormatError(
+                file_path=str(file_path),
+                expected_format="Scannable file",
+                actual_format=f"Scan error: {str(e)}"
+            )
+    
+    @classmethod
+    def _validate_filename(cls, filename: str) -> None:
+        """Validate filename for security"""
+        # Check for path traversal attempts
+        if '..' in filename or '/' in filename or '\\' in filename:
+            raise FileFormatError(
+                file_path=filename,
+                expected_format="Safe filename",
+                actual_format="Path traversal attempt"
+            )
+        
+        # Check for suspicious characters
+        suspicious_chars = ['<', '>', ':', '"', '|', '?', '*', '\0']
+        if any(char in filename for char in suspicious_chars):
+            raise FileFormatError(
+                file_path=filename,
+                expected_format="Clean filename",
+                actual_format="Suspicious characters in filename"
+            )
+        
+        # Check filename length
+        if len(filename) > 255:
+            raise FileFormatError(
+                file_path=filename,
+                expected_format="Filename <= 255 chars",
+                actual_format=f"Filename: {len(filename)} chars"
+            )
+    
+    @classmethod
     def validate_file_format(cls, file_path: Union[str, Path]) -> Path:
         """
-        Validate file format is supported Excel format
+        Comprehensive file validation including security checks
         
         Args:
             file_path: Path to file
@@ -83,9 +242,10 @@ class FileValidator:
             Path object if valid
             
         Raises:
-            FileFormatError: If format is not supported
+            FileFormatError: If format is not supported or file is insecure
         """
-        path = cls.validate_file_exists(file_path)
+        # First run security validation (includes file existence check)
+        path = cls.validate_file_security(file_path)
         
         # Check file extension
         if path.suffix.lower() not in cls.SUPPORTED_EXTENSIONS:
@@ -95,25 +255,75 @@ class FileValidator:
                 actual_format=path.suffix
             )
         
-        # File extension validation already done above
-        # MIME type check removed for deployment compatibility
-        
-        # Try to open with openpyxl to validate structure
-        if not OPENPYXL_AVAILABLE:
-            logger.warning("openpyxl not available, skipping Excel structure validation")
-            return path
-            
-        try:
-            wb = openpyxl.load_workbook(str(path), read_only=True)
-            wb.close()
-        except Exception as e:
-            raise FileFormatError(
-                file_path=str(path),
-                expected_format="Valid Excel file",
-                actual_format=f"Corrupted or invalid: {str(e)}"
-            )
+        # Validate Excel structure integrity
+        cls._validate_excel_integrity(path)
         
         return path
+    
+    @classmethod
+    def _validate_excel_integrity(cls, file_path: Path) -> None:
+        """Validate Excel file structure and integrity"""
+        if not OPENPYXL_AVAILABLE:
+            logger.warning("openpyxl not available, skipping Excel structure validation")
+            return
+            
+        try:
+            # Attempt to open and validate Excel structure
+            wb = openpyxl.load_workbook(str(file_path), read_only=True)
+            
+            # Check number of worksheets
+            if len(wb.worksheets) > cls.MAX_WORKSHEETS:
+                wb.close()
+                raise FileFormatError(
+                    file_path=str(file_path),
+                    expected_format=f"<= {cls.MAX_WORKSHEETS} worksheets",
+                    actual_format=f"{len(wb.worksheets)} worksheets"
+                )
+            
+            # Check if file has at least one worksheet
+            if not wb.worksheets:
+                wb.close()
+                raise FileFormatError(
+                    file_path=str(file_path),
+                    expected_format="At least 1 worksheet",
+                    actual_format="No worksheets found"
+                )
+            
+            # Basic structure validation for each worksheet
+            for ws in wb.worksheets:
+                # Check worksheet size limits
+                if ws.max_row > 100000:  # Reasonable limit
+                    wb.close()
+                    raise FileFormatError(
+                        file_path=str(file_path),
+                        expected_format="<= 100,000 rows per worksheet",
+                        actual_format=f"Worksheet '{ws.title}' has {ws.max_row} rows"
+                    )
+                
+                if ws.max_column > 100:  # Reasonable limit
+                    wb.close()
+                    raise FileFormatError(
+                        file_path=str(file_path),
+                        expected_format="<= 100 columns per worksheet",
+                        actual_format=f"Worksheet '{ws.title}' has {ws.max_column} columns"
+                    )
+            
+            wb.close()
+            logger.debug(f"Excel integrity validation passed for {file_path}")
+            
+        except openpyxl.utils.exceptions.InvalidFileException as e:
+            raise FileFormatError(
+                file_path=str(file_path),
+                expected_format="Valid Excel file structure",
+                actual_format=f"Corrupted Excel file: {str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"Error validating Excel integrity for {file_path}: {e}")
+            raise FileFormatError(
+                file_path=str(file_path),
+                expected_format="Valid Excel file",
+                actual_format=f"Validation error: {str(e)}"
+            )
     
     @classmethod
     def validate_output_writable(cls, file_path: Union[str, Path]) -> Path:

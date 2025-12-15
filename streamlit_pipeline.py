@@ -8,10 +8,12 @@ import sys
 import tempfile
 import shutil
 import time
+import random
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Tuple
 import logging
 import traceback
+from functools import wraps
 
 # Import existing pipeline modules (they use function-based approach)
 import step1_template_creation
@@ -26,6 +28,80 @@ from config_streamlit import get_temp_directory, STREAMLIT_CONFIG
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def with_retry(max_retries: int = 3, backoff_factor: float = 1.0, 
+               exceptions: tuple = (Exception,)):
+    """
+    Decorator for automatic retry with exponential backoff
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        backoff_factor: Multiplier for delay between retries
+        exceptions: Tuple of exception types to catch and retry
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    
+                    if attempt == max_retries:
+                        logger.error(f"Function {func.__name__} failed after {max_retries} retries")
+                        raise last_exception
+                    
+                    # Calculate delay with jitter
+                    delay = backoff_factor * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}, retrying in {delay:.2f}s: {str(e)}")
+                    time.sleep(delay)
+                    
+            return None  # Should never reach here
+        return wrapper
+    return decorator
+
+class ResourceManager:
+    """Context manager for safe resource handling"""
+    
+    def __init__(self):
+        self.resources = []
+        self.temp_files = []
+        
+    def add_resource(self, resource, cleanup_func=None):
+        """Add a resource to be cleaned up"""
+        self.resources.append((resource, cleanup_func))
+        
+    def add_temp_file(self, file_path: Path):
+        """Add a temporary file to be cleaned up"""
+        self.temp_files.append(file_path)
+        
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up all resources"""
+        # Clean up temp files
+        for temp_file in self.temp_files:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink()
+                    logger.debug(f"Cleaned up temp file: {temp_file}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp file {temp_file}: {e}")
+        
+        # Clean up other resources
+        for resource, cleanup_func in self.resources:
+            try:
+                if cleanup_func:
+                    cleanup_func(resource)
+                elif hasattr(resource, 'close'):
+                    resource.close()
+                logger.debug(f"Cleaned up resource: {resource}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up resource {resource}: {e}")
 
 class ProgressCallback:
     """Callback class for tracking pipeline progress"""
@@ -219,83 +295,125 @@ class StreamlitTSSPipeline:
             
             return False, None, self.processing_stats
     
+    @with_retry(max_retries=2, backoff_factor=0.5, exceptions=(OSError, PermissionError))
     def _run_step1(self, input_file: Path, output_dir: Path) -> Path:
-        """Run Step 1: Template Creation"""
-        try:
-            creator = step1_template_creation.TemplateCreator()
-            output_file = creator.create_template(str(input_file))
-            
-            # Move output to session output directory
-            output_path = Path(output_file)
-            session_output = output_dir / output_path.name
-            shutil.move(output_path, session_output)
-            
-            return session_output
-        except Exception as e:
-            raise TSConverterError(f"Step 1 failed: {str(e)}")
+        """Run Step 1: Template Creation with retry logic"""
+        with ResourceManager() as rm:
+            try:
+                creator = step1_template_creation.TemplateCreator()
+                output_file = creator.create_template(str(input_file))
+                
+                # Move output to session output directory
+                output_path = Path(output_file)
+                session_output = output_dir / output_path.name
+                
+                # Add intermediate file to cleanup
+                rm.add_temp_file(output_path)
+                
+                # Ensure target directory exists
+                output_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Use copy instead of move for safety
+                shutil.copy2(output_path, session_output)
+                
+                logger.info(f"Step 1 completed successfully: {session_output}")
+                return session_output
+                
+            except Exception as e:
+                logger.error(f"Step 1 error: {str(e)}")
+                raise TSConverterError(f"Template creation failed: {str(e)}")
     
+    @with_retry(max_retries=2, backoff_factor=0.5, exceptions=(OSError, PermissionError))
     def _run_step2(self, step1_output: Path, source_file: Path, output_dir: Path) -> Path:
-        """Run Step 2: Data Extraction"""
-        try:
-            extractor = step2_data_extraction.DataExtractor()
-            output_file = extractor.process_file(str(step1_output), str(source_file))
-            
-            # Move output to session output directory
-            output_path = Path(output_file)
-            session_output = output_dir / output_path.name
-            shutil.move(output_path, session_output)
-            
-            return session_output
-        except Exception as e:
-            raise TSConverterError(f"Step 2 failed: {str(e)}")
+        """Run Step 2: Data Extraction with retry logic"""
+        with ResourceManager() as rm:
+            try:
+                extractor = step2_data_extraction.DataExtractor()
+                output_file = extractor.process_file(str(step1_output), str(source_file))
+                
+                # Move output to session output directory
+                output_path = Path(output_file)
+                session_output = output_dir / output_path.name
+                
+                rm.add_temp_file(output_path)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(output_path, session_output)
+                
+                logger.info(f"Step 2 completed successfully: {session_output}")
+                return session_output
+                
+            except Exception as e:
+                logger.error(f"Step 2 error: {str(e)}")
+                raise TSConverterError(f"Data extraction failed: {str(e)}")
     
+    @with_retry(max_retries=2, backoff_factor=0.5, exceptions=(OSError, PermissionError))
     def _run_step3(self, source_file: Path, step2_output: Path, output_dir: Path) -> Path:
-        """Run Step 3: Data Mapping"""
-        try:
-            mapper = step3_data_mapping.DataMapper()
-            output_file = mapper.process_file(str(source_file), str(step2_output))
-            
-            # Move output to session output directory
-            output_path = Path(output_file)
-            session_output = output_dir / output_path.name
-            shutil.move(output_path, session_output)
-            
-            return session_output
-        except Exception as e:
-            raise TSConverterError(f"Step 3 failed: {str(e)}")
+        """Run Step 3: Data Mapping with retry logic"""
+        with ResourceManager() as rm:
+            try:
+                mapper = step3_data_mapping.DataMapper()
+                output_file = mapper.process_file(str(source_file), str(step2_output))
+                
+                output_path = Path(output_file)
+                session_output = output_dir / output_path.name
+                
+                rm.add_temp_file(output_path)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(output_path, session_output)
+                
+                logger.info(f"Step 3 completed successfully: {session_output}")
+                return session_output
+                
+            except Exception as e:
+                logger.error(f"Step 3 error: {str(e)}")
+                raise TSConverterError(f"Data mapping failed: {str(e)}")
     
+    @with_retry(max_retries=2, backoff_factor=0.5, exceptions=(OSError, PermissionError))
     def _run_step4(self, step3_output: Path, output_dir: Path) -> Path:
-        """Run Step 4: Data Fill"""
-        try:
-            filler = step4_data_fill.DataFiller()
-            output_file = filler.process_file(str(step3_output))
-            
-            # Move output to session output directory
-            output_path = Path(output_file)
-            session_output = output_dir / output_path.name
-            shutil.move(output_path, session_output)
-            
-            return session_output
-        except Exception as e:
-            raise TSConverterError(f"Step 4 failed: {str(e)}")
+        """Run Step 4: Data Fill with retry logic"""
+        with ResourceManager() as rm:
+            try:
+                filler = step4_data_fill.DataFiller()
+                output_file = filler.process_file(str(step3_output))
+                
+                output_path = Path(output_file)
+                session_output = output_dir / output_path.name
+                
+                rm.add_temp_file(output_path)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(output_path, session_output)
+                
+                logger.info(f"Step 4 completed successfully: {session_output}")
+                return session_output
+                
+            except Exception as e:
+                logger.error(f"Step 4 error: {str(e)}")
+                raise TSConverterError(f"Data fill failed: {str(e)}")
     
+    @with_retry(max_retries=2, backoff_factor=0.5, exceptions=(OSError, PermissionError))
     def _run_step5(self, step4_output: Path, output_dir: Path) -> Path:
-        """Run Step 5: Filter & Deduplicate"""
-        try:
-            filter_dedup = step5_filter_deduplicate.DataFilter()
-            output_file = filter_dedup.process_file(str(step4_output))
-            
-            # Move output to session output directory and extract statistics
-            output_path = Path(output_file)
-            session_output = output_dir / output_path.name
-            shutil.move(output_path, session_output)
-            
-            # Extract processing statistics from logs or output
-            self._extract_step5_stats(session_output)
-            
-            return session_output
-        except Exception as e:
-            raise TSConverterError(f"Step 5 failed: {str(e)}")
+        """Run Step 5: Filter & Deduplicate with retry logic"""
+        with ResourceManager() as rm:
+            try:
+                filter_dedup = step5_filter_deduplicate.DataFilter()
+                output_file = filter_dedup.process_file(str(step4_output))
+                
+                output_path = Path(output_file)
+                session_output = output_dir / output_path.name
+                
+                rm.add_temp_file(output_path)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(output_path, session_output)
+                
+                # Extract processing statistics
+                self._extract_step5_stats(session_output)
+                
+                logger.info(f"Step 5 completed successfully: {session_output}")
+                return session_output
+                
+            except Exception as e:
+                logger.error(f"Step 5 error: {str(e)}")
+                raise TSConverterError(f"Filter & deduplicate failed: {str(e)}")
     
     def _extract_step5_stats(self, output_file: Path):
         """Extract statistics from Step 5 output for display"""
@@ -332,38 +450,34 @@ class StreamlitTSSPipeline:
     
     def validate_input_file(self, file_path: Path) -> Tuple[bool, str]:
         """
-        Validate input file format and structure
+        Enhanced input file validation with security checks
         
         Returns:
             Tuple of (is_valid, error_message)
         """
         try:
-            validator = FileValidator()
+            # Use enhanced security validation
+            FileValidator.validate_file_format(file_path)
             
-            # Basic file validation
-            if not file_path.exists():
-                return False, "File không tồn tại"
+            logger.info(f"File validation passed for: {file_path.name}")
+            return True, "File validation successful"
             
-            if not file_path.suffix.lower() == '.xlsx':
-                return False, "File phải có định dạng .xlsx"
-            
-            # File size validation
-            file_size_mb = file_path.stat().st_size / (1024 * 1024)
-            max_size = STREAMLIT_CONFIG.get("max_file_size_mb", 50)
-            if file_size_mb > max_size:
-                return False, f"File quá lớn. Kích thước tối đa: {max_size}MB"
-            
-            # Basic structure validation
-            import openpyxl
-            wb = openpyxl.load_workbook(file_path, read_only=True)
-            if not wb.worksheets:
-                return False, "File Excel không có worksheet nào"
-            wb.close()
-            
-            return True, "File hợp lệ"
-            
+        except TSConverterError as e:
+            # Provide user-friendly error messages
+            if "signature" in str(e).lower():
+                return False, "Invalid file format. Please upload a valid Excel (.xlsx) file."
+            elif "size" in str(e).lower():
+                return False, f"File too large. Maximum size: {FileValidator.MAX_FILE_SIZE // (1024*1024)}MB"
+            elif "malicious" in str(e).lower():
+                return False, "File contains suspicious content and cannot be processed."
+            elif "worksheets" in str(e).lower():
+                return False, "File has too many worksheets or invalid structure."
+            else:
+                return False, f"File validation failed: {str(e)}"
+                
         except Exception as e:
-            return False, f"Lỗi validate file: {str(e)}"
+            logger.error(f"Unexpected validation error for {file_path}: {e}")
+            return False, "File validation failed due to an unexpected error. Please try again."
     
     def get_processing_stats(self) -> Dict[str, Any]:
         """Get current processing statistics"""
