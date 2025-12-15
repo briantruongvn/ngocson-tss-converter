@@ -28,6 +28,50 @@ from config_streamlit import get_temp_directory, STREAMLIT_CONFIG
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class ResourceManager:
+    """Context manager for handling temporary files and cleanup"""
+    
+    def __init__(self):
+        self.temp_files = []
+        
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Cleanup temporary files
+        for file_path in self.temp_files:
+            try:
+                if isinstance(file_path, (str, Path)):
+                    path_obj = Path(file_path)
+                    if path_obj.exists():
+                        if path_obj.is_file():
+                            path_obj.unlink()
+                        elif path_obj.is_dir():
+                            shutil.rmtree(path_obj)
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp file {file_path}: {e}")
+                
+    def add_temp_file(self, file_path):
+        """Add a file or directory to be cleaned up"""
+        self.temp_files.append(file_path)
+
+def with_retry(max_retries=3, exceptions=(Exception,), backoff_factor=0.5):
+    """Decorator for retrying functions on failure"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    if attempt == max_retries:
+                        raise e
+                    wait_time = backoff_factor * (2 ** attempt)
+                    time.sleep(wait_time)
+                    logger.warning(f"Retrying {func.__name__} (attempt {attempt + 1}/{max_retries + 1}) after {wait_time}s")
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 class ProgressCallback:
     """Callback class for tracking pipeline progress"""
     
