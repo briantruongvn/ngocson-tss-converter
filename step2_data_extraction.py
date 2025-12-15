@@ -6,6 +6,7 @@ Extracts Article Name and Article Number from input Excel files and populates St
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 import logging
 from pathlib import Path
 from typing import Union, Optional, List, Tuple, Dict
@@ -41,9 +42,38 @@ class DataExtractor:
         self.name_headers = ["Product name", "Article name", "product name", "article name"]
         self.number_headers = ["Product number", "Article number", "product number", "article number"]
     
+    def is_cell_hidden(self, worksheet, row_num: int, col_num: int) -> bool:
+        """
+        Check if a cell is in a hidden row or column
+        
+        Args:
+            worksheet: openpyxl worksheet object
+            row_num: Row number (1-based)
+            col_num: Column number (1-based)
+            
+        Returns:
+            True if cell is hidden, False otherwise
+        """
+        try:
+            # Check if row is hidden
+            row_hidden = worksheet.row_dimensions.get(row_num, None)
+            if row_hidden and getattr(row_hidden, 'hidden', False):
+                return True
+            
+            # Check if column is hidden
+            col_letter = get_column_letter(col_num)
+            col_hidden = worksheet.column_dimensions.get(col_letter, None)
+            if col_hidden and getattr(col_hidden, 'hidden', False):
+                return True
+            
+            return False
+        except Exception as e:
+            logger.debug(f"Error checking if cell {row_num},{col_num} is hidden: {e}")
+            return False
+    
     def find_header_cells(self, worksheet, headers: List[str]) -> List[Tuple[int, int]]:
         """
-        Find cells containing specified headers in a worksheet
+        Find cells containing specified headers in a worksheet, skipping hidden cells
         
         Args:
             worksheet: openpyxl worksheet object
@@ -54,6 +84,7 @@ class DataExtractor:
         """
         found_cells = []
         cells_checked = 0
+        hidden_cells_skipped = 0
         max_cells = 10000  # Safety limit to prevent infinite search
         
         try:
@@ -64,6 +95,12 @@ class DataExtractor:
                     if cells_checked > max_cells:
                         logger.warning(f"Header search timeout in {worksheet.title}: checked {cells_checked} cells")
                         break
+                    
+                    # Skip hidden cells
+                    if self.is_cell_hidden(worksheet, row_num, col_num):
+                        hidden_cells_skipped += 1
+                        logger.debug(f"Skipping hidden cell {worksheet.title}!{row_num},{col_num}")
+                        continue
                         
                     try:
                         cell = worksheet.cell(row=row_num, column=col_num)
@@ -84,7 +121,7 @@ class DataExtractor:
         except Exception as e:
             logger.error(f"Error searching headers in {worksheet.title}: {e}")
         
-        logger.debug(f"Header search in {worksheet.title}: checked {cells_checked} cells, found {len(found_cells)} matches")
+        logger.debug(f"Header search in {worksheet.title}: checked {cells_checked} cells, skipped {hidden_cells_skipped} hidden cells, found {len(found_cells)} matches")
         return found_cells
     
     def safe_cell_value(self, cell) -> str:
@@ -185,7 +222,7 @@ class DataExtractor:
     
     def extract_data_vertical(self, worksheet, start_row: int, start_col: int) -> List[str]:
         """
-        Extract data vertically from worksheet starting from specified position
+        Extract data vertically from worksheet starting from specified position, skipping hidden cells
         Parse multi-value cells into individual items
         
         Args:
@@ -200,9 +237,18 @@ class DataExtractor:
         current_row = start_row + 1  # Start from next row after header
         max_rows = 1000  # Safety limit to prevent infinite loops
         rows_checked = 0
+        hidden_rows_skipped = 0
         
         try:
             while rows_checked < max_rows:
+                # Skip hidden cells
+                if self.is_cell_hidden(worksheet, current_row, start_col):
+                    hidden_rows_skipped += 1
+                    logger.debug(f"Skipping hidden cell {worksheet.title}!{current_row},{start_col}")
+                    current_row += 1
+                    rows_checked += 1
+                    continue
+                
                 cell = worksheet.cell(row=current_row, column=start_col)
                 
                 # Use safe cell reading to handle formula errors
@@ -238,7 +284,7 @@ class DataExtractor:
             logger.error(f"Error during data extraction at {worksheet.title}!{current_row},{start_col}: {e}")
             # Return what we have so far
         
-        logger.debug(f"Finished extracting from column {start_col}, found {len(data)} items")
+        logger.debug(f"Finished extracting from column {start_col}, found {len(data)} items, skipped {hidden_rows_skipped} hidden rows")
         return data
     
     def remove_duplicates(self, name_data: List[str], number_data: List[str]) -> Tuple[List[str], List[str]]:
@@ -299,11 +345,16 @@ class DataExtractor:
             if allow_missing_headers:
                 # Use graceful validation that returns warnings instead of exceptions
                 from common.validation import validate_step2_input as validate_graceful
-                is_valid, validation_warnings = validate_graceful(step1_file, source_file, graceful=True)
-                if validation_warnings:
-                    for warning in validation_warnings:
-                        get_global_reporter().add_warning('step2', 'validation_warning', warning)
-                        processing_warnings.append(warning)
+                validation_result = validate_graceful(step1_file, source_file, graceful=True)
+                if isinstance(validation_result, tuple):
+                    is_valid, validation_warnings = validation_result
+                    if validation_warnings:
+                        for warning in validation_warnings:
+                            get_global_reporter().add_warning('step2', 'validation_warning', warning)
+                            processing_warnings.append(warning)
+                else:
+                    # If graceful validation is not available, use regular validation
+                    validate_step2_input(step1_file, source_file)
             else:
                 validate_step2_input(step1_file, source_file)
             
