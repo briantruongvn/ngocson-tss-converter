@@ -111,13 +111,17 @@ def inject_custom_css():
 def render_app_header():
     """Render main application header"""
     # Use Streamlit native components for proper centering
-    st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align: center; margin: 0 auto; max-width: 80%;'>", unsafe_allow_html=True)
     st.title("📊 Ngoc Son Internal TSS converter")
     st.caption("Convert Ngoc Son Internal TSS to Standard Internal TSS")
     st.markdown("</div>", unsafe_allow_html=True)
     
-    # Add separator line
-    st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
+    # Add shorter separator line that matches content width
+    st.markdown("""
+        <div style='text-align: center; margin: 1.5rem auto;'>
+            <hr style='width: 60%; max-width: 600px; margin: 0 auto; border: none; border-top: 1px solid #e5e7eb;'>
+        </div>
+    """, unsafe_allow_html=True)
 
 def render_file_upload_area() -> Optional[bytes]:
     """

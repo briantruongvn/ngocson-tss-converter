@@ -585,6 +585,23 @@ CUSTOM_CSS = """
         margin: 0 auto !important;
     }
     
+    /* Enhanced centering for subtitle and caption */
+    .stApp p[data-testid="stText"],
+    .stApp div[data-testid="stMarkdownContainer"] p,
+    .stApp .element-container p {
+        text-align: center !important;
+        margin: 0.5rem auto !important;
+        display: block !important;
+        width: 100% !important;
+    }
+    
+    /* Make sure title and subtitle container is properly centered */
+    .stApp .element-container:has(h1),
+    .stApp .block-container > div:first-child {
+        text-align: center !important;
+        margin: 0 auto !important;
+    }
+    
     /* Fix sidebar text overlap */
     .css-1d391kg {
         z-index: 1;
@@ -750,14 +767,25 @@ CUSTOM_CSS = """
         });
         
         // Center Streamlit title and caption
-        const streamlitHeaders = document.querySelectorAll('h1, .stCaption, [data-testid="stMarkdownContainer"] p');
+        const streamlitHeaders = document.querySelectorAll('h1, .stCaption, [data-testid="stMarkdownContainer"] p, p, .element-container p');
         streamlitHeaders.forEach(header => {
-            if (header.textContent.includes('Ngoc Son') || header.textContent.includes('Convert Ngoc Son')) {
+            if (header.textContent.includes('Ngoc Son') || header.textContent.includes('Convert Ngoc Son') || header.textContent.includes('Convert')) {
                 header.style.textAlign = 'center';
                 header.style.marginLeft = 'auto';
                 header.style.marginRight = 'auto';
                 header.style.width = '100%';
                 header.style.display = 'block';
+            }
+        });
+        
+        // Force center all paragraph elements in header section
+        const allParagraphs = document.querySelectorAll('p');
+        allParagraphs.forEach(p => {
+            if (p.textContent.includes('Convert') && p.textContent.includes('TSS')) {
+                p.style.textAlign = 'center';
+                p.style.margin = '0 auto';
+                p.style.width = '100%';
+                p.style.display = 'block';
             }
         });
         
