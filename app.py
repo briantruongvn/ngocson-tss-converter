@@ -161,8 +161,6 @@ def main():
         # Centered layout for upload only
         _, center_col, _ = st.columns([1, 2, 1])
         with center_col:
-            st.markdown("### 📁 Upload File")
-            
             file_data = render_file_upload_area()
             
             if file_data is not None:
