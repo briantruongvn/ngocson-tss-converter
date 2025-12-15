@@ -109,22 +109,27 @@ def inject_custom_css():
     st.markdown(hide_streamlit_js, unsafe_allow_html=True)
 
 def render_app_header():
-    """Render main application header with safe content"""
-    # Use native Streamlit components instead of raw HTML
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("# 📊 Ngoc Son Internal TSS converter")
-        st.markdown("*Convert Ngoc Son Internal TSS to Standard Internal TSS*")
-        st.markdown("---")
+    """Render main application header"""
+    # Use Streamlit native components for proper centering
+    st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+    st.title("📊 Ngoc Son Internal TSS converter")
+    st.caption("Convert Ngoc Son Internal TSS to Standard Internal TSS")
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Add separator line
+    st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
 def render_file_upload_area() -> Optional[bytes]:
     """
-    Render file upload area with validation - safe version
+    Render file upload area with validation
     Returns uploaded file bytes if valid
     """
-    # Use native Streamlit components
-    st.markdown("### 📁 Upload Excel File")
-    st.markdown("Select Excel file (.xlsx) to convert")
+    st.markdown("""
+        <div class="upload-area">
+            <h3>📁 Upload Excel File</h3>
+            <p>Select Excel file (.xlsx) to convert</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     uploaded_file = st.file_uploader(
         label="Select Excel file",
@@ -295,25 +300,36 @@ def render_processing_stats(stats: Dict[str, Any]):
             st.write(f"⏱️ Processing time: {stats['processing_time']:.1f} seconds")
 
 def render_info_message(message: str):
-    """Render info message box - safe version"""
-    # Escape HTML and use native Streamlit component
-    safe_message = message.replace('<', '&lt;').replace('>', '&gt;')
-    st.info(f"ℹ️ {safe_message}")
+    """Render info message box"""
+    st.markdown(f"""
+        <div class="info-box">
+            ℹ️ {message}
+        </div>
+    """, unsafe_allow_html=True)
 
 def render_success_message(message: str):
-    """Render success message box - safe version"""
-    safe_message = message.replace('<', '&lt;').replace('>', '&gt;')
-    st.success(f"✅ {safe_message}")
+    """Render success message box"""
+    st.markdown(f"""
+        <div class="info-box success-box">
+            ✅ {message}
+        </div>
+    """, unsafe_allow_html=True)
 
 def render_warning_message(message: str):
-    """Render warning message box - safe version"""
-    safe_message = message.replace('<', '&lt;').replace('>', '&gt;')
-    st.warning(f"⚠️ {safe_message}")
+    """Render warning message box"""
+    st.markdown(f"""
+        <div class="info-box warning-box">
+            ⚠️ {message}
+        </div>
+    """, unsafe_allow_html=True)
 
 def render_error_message(message: str, details: Optional[str] = None):
-    """Render error message box with optional details - safe version"""
-    safe_message = message.replace('<', '&lt;').replace('>', '&gt;')
-    st.error(f"❌ {safe_message}")
+    """Render error message box with optional details"""
+    st.markdown(f"""
+        <div class="info-box error-box">
+            ❌ {message}
+        </div>
+    """, unsafe_allow_html=True)
     
     if details and STREAMLIT_CONFIG.get("show_error_details", True):
         with st.expander("Chi tiết lỗi"):

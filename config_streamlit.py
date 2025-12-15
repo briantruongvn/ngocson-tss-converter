@@ -113,11 +113,13 @@ CUSTOM_CSS = """
     
     /* Main app styling */
     .main-header {
-        text-align: center;
+        text-align: center !important;
         color: #111827;
         margin-bottom: 0.75rem;
         padding: 0.75rem;
         background: transparent;
+        width: 100% !important;
+        display: block !important;
     }
     
     .main-header h1 {
@@ -127,6 +129,8 @@ CUSTOM_CSS = """
         margin-bottom: 0.125rem;
         letter-spacing: -0.025em;
         margin-top: 0;
+        text-align: center !important;
+        width: 100% !important;
     }
     
     .main-header p {
@@ -135,6 +139,8 @@ CUSTOM_CSS = """
         font-size: 1rem;
         margin-top: 0;
         margin-bottom: 0;
+        text-align: center !important;
+        width: 100% !important;
     }
     
     /* Upload area styling */
@@ -506,6 +512,68 @@ CUSTOM_CSS = """
         position: relative !important;
     }
     
+    /* Override any Streamlit layout that might affect header */
+    .stApp .main-header,
+    .stApp .main-header h1,
+    .stApp .main-header p {
+        text-align: center !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        width: 100% !important;
+    }
+    
+    /* Ensure header is not affected by column layouts */
+    .main .block-container > div:first-child .main-header {
+        text-align: center !important;
+        width: 100% !important;
+    }
+    
+    /* Nuclear option - target all possible Streamlit containers */
+    div[data-testid="stMarkdownContainer"] .main-header,
+    div[data-testid="stMarkdownContainer"] .main-header h1,
+    div[data-testid="stMarkdownContainer"] .main-header p,
+    .element-container .main-header,
+    .element-container .main-header h1,
+    .element-container .main-header p,
+    .stMarkdown .main-header,
+    .stMarkdown .main-header h1,
+    .stMarkdown .main-header p {
+        text-align: center !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        width: 100% !important;
+        display: block !important;
+    }
+    
+    /* Force center alignment on any div containing main-header */
+    div:has(.main-header) {
+        text-align: center !important;
+        width: 100% !important;
+    }
+    
+    /* Backup approach - center the parent container */
+    .main-header {
+        margin: 0 auto !important;
+        max-width: 100% !important;
+        position: relative !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+    }
+    
+    /* Force center native Streamlit title and caption components */
+    .stTitle,
+    .stCaption,
+    h1[data-testid="stHeader"],
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] .stCaption,
+    div[data-testid="element-container"] h1,
+    div[data-testid="element-container"] .stCaption {
+        text-align: center !important;
+        width: 100% !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+    
     /* Fix sidebar text overlap */
     .css-1d391kg {
         z-index: 1;
@@ -658,6 +726,49 @@ CUSTOM_CSS = """
     
     // Run periodically as backup
     setInterval(hideStreamlitElements, 1000);
+    
+    // Function to force center the header
+    function centerHeader() {
+        const headers = document.querySelectorAll('.main-header, .main-header h1, .main-header p');
+        headers.forEach(header => {
+            header.style.textAlign = 'center';
+            header.style.marginLeft = 'auto';
+            header.style.marginRight = 'auto';
+            header.style.width = '100%';
+            header.style.display = 'block';
+        });
+        
+        // Also center parent containers
+        const headerContainers = document.querySelectorAll('div:has(.main-header)');
+        headerContainers.forEach(container => {
+            container.style.textAlign = 'center';
+            container.style.width = '100%';
+        });
+    }
+    
+    // Run header centering function
+    centerHeader();
+    setTimeout(centerHeader, 100);
+    setTimeout(centerHeader, 500);
+    setTimeout(centerHeader, 1000);
+    
+    // Add to the existing observer
+    const headerObserver = new MutationObserver(function(mutations) {
+        centerHeader();
+    });
+    
+    headerObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true
+    });
+    
+    // Run on load events
+    document.addEventListener('DOMContentLoaded', centerHeader);
+    window.addEventListener('load', centerHeader);
+    
+    // Run periodically
+    setInterval(centerHeader, 500);
 </script>
 """
 

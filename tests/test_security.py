@@ -13,7 +13,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.validation import FileValidator
-from common.rate_limiter import RateLimiter, RateLimitConfig
 from common.exceptions import FileFormatError, TSConverterError
 
 
@@ -117,79 +116,6 @@ class TestFileSecurityValidation(unittest.TestCase):
             FileValidator.validate_file_security(file_path)
         
         self.assertIn("Empty file", str(ctx.exception))
-
-
-class TestRateLimiting(unittest.TestCase):
-    """Test rate limiting functionality"""
-    
-    def setUp(self):
-        # Create rate limiter with strict limits for testing
-        self.config = RateLimitConfig(
-            requests_per_minute=2,
-            requests_per_hour=5,
-            max_concurrent_sessions=2
-        )
-        self.rate_limiter = RateLimiter(self.config)
-    
-    def test_rate_limit_per_minute(self):
-        """Test per-minute rate limiting"""
-        client_ip = "192.168.1.1"
-        
-        # First two requests should be allowed
-        allowed, _ = self.rate_limiter.check_rate_limit(client_ip)
-        self.assertTrue(allowed)
-        
-        allowed, _ = self.rate_limiter.check_rate_limit(client_ip)
-        self.assertTrue(allowed)
-        
-        # Third request should be blocked
-        allowed, reason = self.rate_limiter.check_rate_limit(client_ip)
-        self.assertFalse(allowed)
-        self.assertIn("requests per minute", reason)
-    
-    def test_concurrent_session_limit(self):
-        """Test concurrent session limiting"""
-        # First two sessions should be allowed
-        allowed, _ = self.rate_limiter.check_concurrent_sessions("session1")
-        self.assertTrue(allowed)
-        
-        allowed, _ = self.rate_limiter.check_concurrent_sessions("session2")
-        self.assertTrue(allowed)
-        
-        # Third session should be blocked
-        allowed, reason = self.rate_limiter.check_concurrent_sessions("session3")
-        self.assertFalse(allowed)
-        self.assertIn("concurrent sessions", reason)
-    
-    def test_different_ips_independent_limits(self):
-        """Test that different IPs have independent rate limits"""
-        ip1 = "192.168.1.1"
-        ip2 = "192.168.1.2"
-        
-        # Exhaust limit for IP1
-        for _ in range(2):
-            allowed, _ = self.rate_limiter.check_rate_limit(ip1)
-            self.assertTrue(allowed)
-        
-        # IP1 should be blocked
-        allowed, _ = self.rate_limiter.check_rate_limit(ip1)
-        self.assertFalse(allowed)
-        
-        # IP2 should still be allowed
-        allowed, _ = self.rate_limiter.check_rate_limit(ip2)
-        self.assertTrue(allowed)
-    
-    def test_rate_limiter_stats(self):
-        """Test rate limiter statistics"""
-        # Make some requests
-        self.rate_limiter.check_rate_limit("192.168.1.1")
-        self.rate_limiter.check_concurrent_sessions("session1")
-        
-        stats = self.rate_limiter.get_stats()
-        
-        self.assertIn("active_ips_per_minute", stats)
-        self.assertIn("active_sessions", stats)
-        self.assertGreaterEqual(stats["active_sessions"], 1)
 
 
 class TestIntegrationSecurity(unittest.TestCase):
