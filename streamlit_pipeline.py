@@ -23,6 +23,7 @@ import step4_data_fill
 import step5_filter_deduplicate
 from common.exceptions import TSConverterError
 from common.validation import FileValidator
+from common.quality_reporter import get_global_reporter, reset_global_reporter
 from config_streamlit import get_temp_directory, STREAMLIT_CONFIG
 
 # Set up logging
@@ -204,6 +205,11 @@ class StreamlitTSSPipeline:
         output_dir = session_dir / "output"
         
         try:
+            # Reset and initialize quality reporter
+            reset_global_reporter()
+            reporter = get_global_reporter()
+            reporter.start_processing()
+            
             # Initialize processing stats
             self.processing_stats = {
                 "start_time": start_time,
@@ -264,14 +270,24 @@ class StreamlitTSSPipeline:
             
             # Calculate final statistics
             end_time = time.time()
+            reporter.end_processing()
+            
+            # Get quality summary
+            quality_summary = reporter.get_user_summary()
+            
             self.processing_stats.update({
                 "end_time": end_time,
                 "processing_time": end_time - start_time,
                 "success": True,
-                "final_output": str(final_output)
+                "final_output": str(final_output),
+                "quality_score": quality_summary["quality_score"],
+                "warnings_count": quality_summary["warnings_count"],
+                "errors_count": quality_summary["errors_count"],
+                "quality_summary": quality_summary
             })
             
             logger.info(f"Pipeline completed successfully: {final_output}")
+            logger.info(f"Quality score: {quality_summary['quality_score']:.1f}/100")
             return True, final_output, self.processing_stats
             
         except Exception as e:
@@ -325,11 +341,17 @@ class StreamlitTSSPipeline:
     
     @with_retry(max_retries=2, backoff_factor=0.5, exceptions=(OSError, PermissionError))
     def _run_step2(self, step1_output: Path, source_file: Path, output_dir: Path) -> Path:
-        """Run Step 2: Data Extraction with retry logic"""
+        """Run Step 2: Data Extraction with graceful fallbacks and retry logic"""
         with ResourceManager() as rm:
             try:
                 extractor = step2_data_extraction.DataExtractor()
-                output_file = extractor.process_file(str(step1_output), str(source_file))
+                
+                # Use graceful fallback processing to handle missing headers and formula errors
+                output_file = extractor.process_file_with_fallbacks(
+                    str(step1_output), 
+                    str(source_file),
+                    allow_missing_headers=True
+                )
                 
                 # Move output to session output directory
                 output_path = Path(output_file)
@@ -339,11 +361,31 @@ class StreamlitTSSPipeline:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(output_path, session_output)
                 
-                logger.info(f"Step 2 completed successfully: {session_output}")
+                logger.info(f"Step 2 completed successfully (with graceful fallbacks): {session_output}")
                 return session_output
                 
             except Exception as e:
                 logger.error(f"Step 2 error: {str(e)}")
+                
+                # Try fallback to regular processing if graceful processing fails
+                try:
+                    logger.info("Attempting fallback to regular processing...")
+                    extractor = step2_data_extraction.DataExtractor()
+                    output_file = extractor.process_file(str(step1_output), str(source_file))
+                    
+                    output_path = Path(output_file)
+                    session_output = output_dir / output_path.name
+                    
+                    rm.add_temp_file(output_path)
+                    shutil.copy2(output_path, session_output)
+                    
+                    logger.info(f"Step 2 completed with fallback processing: {session_output}")
+                    return session_output
+                    
+                except Exception as fallback_error:
+                    logger.error(f"Both graceful and fallback processing failed: {fallback_error}")
+                    raise TSConverterError(f"Data extraction failed: {str(e)}")
+                    
                 raise TSConverterError(f"Data extraction failed: {str(e)}")
     
     @with_retry(max_retries=2, backoff_factor=0.5, exceptions=(OSError, PermissionError))

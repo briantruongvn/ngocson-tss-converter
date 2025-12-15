@@ -15,6 +15,7 @@ import re
 
 from common.validation import validate_step2_input, FileValidator
 from common.exceptions import TSConverterError
+from common.quality_reporter import get_global_reporter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -66,12 +67,12 @@ class DataExtractor:
                         
                     try:
                         cell = worksheet.cell(row=row_num, column=col_num)
-                        if cell.value and isinstance(cell.value, str):
-                            cell_value = cell.value.strip()
+                        cell_value = self.safe_cell_value(cell)
+                        if cell_value:
                             for header in headers:
                                 if header.lower() in cell_value.lower():
                                     found_cells.append((cell.row, cell.column))
-                                    logger.info(f"Found '{header}' at {worksheet.title}!{cell.coordinate}: {cell.value}")
+                                    logger.info(f"Found '{header}' at {worksheet.title}!{cell.coordinate}: {cell_value}")
                                     break
                     except Exception as cell_error:
                         logger.debug(f"Error reading cell {worksheet.title}!{row_num},{col_num}: {cell_error}")
@@ -85,6 +86,49 @@ class DataExtractor:
         
         logger.debug(f"Header search in {worksheet.title}: checked {cells_checked} cells, found {len(found_cells)} matches")
         return found_cells
+    
+    def safe_cell_value(self, cell) -> str:
+        """
+        Safely extract cell value, handling formula errors and edge cases
+        
+        Args:
+            cell: openpyxl cell object
+            
+        Returns:
+            Safe string value or empty string if error
+        """
+        try:
+            if cell.value is None:
+                return ""
+            
+            # Check for Excel formula errors
+            if isinstance(cell.value, str):
+                formula_errors = ['#N/A', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?', '#NULL!', '#NUM!', '#ERROR!']
+                if any(error in str(cell.value) for error in formula_errors):
+                    warning_msg = f"Formula error detected in {cell.coordinate}: {cell.value} - using empty value"
+                    logger.warning(warning_msg)
+                    get_global_reporter().add_warning(
+                        'step2', 'formula_errors',
+                        f"Excel formula error in cell {cell.coordinate}",
+                        f"Error value: {cell.value}"
+                    )
+                    return ""
+            
+            # Handle numeric values
+            if isinstance(cell.value, (int, float)):
+                return str(cell.value)
+            
+            # Handle datetime values  
+            from datetime import datetime
+            if isinstance(cell.value, datetime):
+                return cell.value.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Convert to string and clean
+            return str(cell.value).strip()
+        
+        except Exception as e:
+            logger.warning(f"Error reading cell {getattr(cell, 'coordinate', 'unknown')}: {e} - using empty value")
+            return ""
     
     def clean_value(self, value: str) -> str:
         """
@@ -161,13 +205,14 @@ class DataExtractor:
             while rows_checked < max_rows:
                 cell = worksheet.cell(row=current_row, column=start_col)
                 
+                # Use safe cell reading to handle formula errors
+                value = self.safe_cell_value(cell)
+                
                 # Check if we've reached end of data
-                if cell.value is None or (isinstance(cell.value, str) and cell.value.strip() == ""):
+                if not value:
                     logger.debug(f"Stopping extraction at {worksheet.title}!{cell.coordinate}: empty cell")
                     break
                 
-                # Convert value to string and clean it
-                value = str(cell.value).strip()
                 if value:
                     # Parse multi-value cells
                     try:
@@ -227,6 +272,211 @@ class DataExtractor:
                 logger.info(f"Removed duplicate pair: ('{name}', '{number}')")
         
         return unique_names, unique_numbers
+    
+    def process_file_with_fallbacks(self, step1_file: Union[str, Path], 
+                                   source_file: Union[str, Path],
+                                   output_file: Optional[Union[str, Path]] = None,
+                                   allow_missing_headers: bool = True) -> str:
+        """
+        Process Step1 file and extract data from source file with graceful fallbacks
+        
+        Args:
+            step1_file: Step1 template file path
+            source_file: Source Excel file to extract data from
+            output_file: Optional output file path (if None, auto-generate)
+            allow_missing_headers: If True, continue processing even if headers are missing
+            
+        Returns:
+            Path to output file
+        """
+        logger.info("📋 Step 2: Data Extraction (with graceful fallbacks)")
+        
+        # Initialize processing warnings list
+        processing_warnings = []
+        
+        # Validate input files with graceful mode if fallbacks are allowed
+        try:
+            if allow_missing_headers:
+                # Use graceful validation that returns warnings instead of exceptions
+                from common.validation import validate_step2_input as validate_graceful
+                is_valid, validation_warnings = validate_graceful(step1_file, source_file, graceful=True)
+                if validation_warnings:
+                    for warning in validation_warnings:
+                        get_global_reporter().add_warning('step2', 'validation_warning', warning)
+                        processing_warnings.append(warning)
+            else:
+                validate_step2_input(step1_file, source_file)
+            
+            step1_path = Path(step1_file)
+            source_path = Path(source_file)
+        except TSConverterError as e:
+            if allow_missing_headers:
+                logger.warning(f"Input validation failed but continuing with fallbacks: {e}")
+                get_global_reporter().add_warning('step2', 'validation_failed', str(e))
+                processing_warnings.append(f"Input validation failed: {e}")
+                step1_path = Path(step1_file)
+                source_path = Path(source_file)
+            else:
+                logger.error(f"Input validation failed: {e}")
+                raise
+        
+        # Auto-generate output file if not provided
+        if output_file is None:
+            base_name = step1_path.stem.replace(" - Step1", "")
+            output_file = self.output_dir / f"{base_name} - Step2.xlsx"
+        else:
+            output_file = Path(output_file)
+        
+        # Validate output path is writable
+        try:
+            output_file = FileValidator.validate_output_writable(output_file)
+        except TSConverterError as e:
+            logger.error(f"Output validation failed: {e}")
+            raise
+        
+        logger.info(f"Step1 Template: {step1_path}")
+        logger.info(f"Source Data: {source_path}")
+        logger.info(f"Output: {output_file}")
+        
+        # Load Step1 template (preserve formatting)
+        step1_wb = openpyxl.load_workbook(str(step1_path))
+        step1_ws = step1_wb.active
+        
+        # Load source file for data extraction
+        source_wb = openpyxl.load_workbook(str(source_path))
+        
+        all_names = []
+        all_numbers = []
+        
+        # Process each worksheet in source file
+        for sheet_name in source_wb.sheetnames:
+            logger.info(f"Processing sheet: {sheet_name}")
+            try:
+                worksheet = source_wb[sheet_name]
+                
+                # Find article name headers with graceful fallback
+                try:
+                    name_cells = self.find_header_cells(worksheet, self.name_headers)
+                    if not name_cells and allow_missing_headers:
+                        warning_msg = f"No name headers found in sheet {sheet_name} - using empty placeholder"
+                        logger.warning(warning_msg)
+                        processing_warnings.append(f"Missing name headers in sheet '{sheet_name}'")
+                        get_global_reporter().add_warning(
+                            'step2', 'missing_headers', 
+                            f"Missing article name headers in sheet '{sheet_name}'",
+                            "Expected headers: " + ", ".join(self.name_headers)
+                        )
+                        # Add empty placeholder to maintain structure
+                        all_names.append("")
+                    else:
+                        for row, col in name_cells:
+                            try:
+                                names = self.extract_data_vertical(worksheet, row, col)
+                                all_names.extend(names)
+                                logger.info(f"Extracted {len(names)} names from {sheet_name}!{worksheet.cell(row, col).coordinate}")
+                            except Exception as e:
+                                logger.error(f"Error extracting names from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
+                                if allow_missing_headers:
+                                    processing_warnings.append(f"Failed to extract names from {sheet_name}: {str(e)}")
+                                    continue
+                                else:
+                                    raise
+                except Exception as e:
+                    logger.error(f"Error finding name headers in sheet {sheet_name}: {e}")
+                    if allow_missing_headers:
+                        processing_warnings.append(f"Header search failed in sheet '{sheet_name}': {str(e)}")
+                    else:
+                        raise
+                
+                # Find article number headers with graceful fallback
+                try:
+                    number_cells = self.find_header_cells(worksheet, self.number_headers)
+                    if not number_cells and allow_missing_headers:
+                        logger.warning(f"No number headers found in sheet {sheet_name} - using empty placeholder")
+                        processing_warnings.append(f"Missing number headers in sheet '{sheet_name}'")
+                        # Add empty placeholder to maintain structure
+                        all_numbers.append("")
+                    else:
+                        for row, col in number_cells:
+                            try:
+                                numbers = self.extract_data_vertical(worksheet, row, col)
+                                all_numbers.extend(numbers)
+                                logger.info(f"Extracted {len(numbers)} numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}")
+                            except Exception as e:
+                                logger.error(f"Error extracting numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
+                                if allow_missing_headers:
+                                    processing_warnings.append(f"Failed to extract numbers from {sheet_name}: {str(e)}")
+                                    continue
+                                else:
+                                    raise
+                except Exception as e:
+                    logger.error(f"Error finding number headers in sheet {sheet_name}: {e}")
+                    if allow_missing_headers:
+                        processing_warnings.append(f"Header search failed in sheet '{sheet_name}': {str(e)}")
+                    else:
+                        raise
+                    
+            except Exception as e:
+                logger.error(f"Error processing sheet {sheet_name}: {e}")
+                if allow_missing_headers:
+                    processing_warnings.append(f"Failed to process sheet '{sheet_name}': {str(e)}")
+                    continue
+                else:
+                    raise
+        
+        # If no data was extracted and we're allowing fallbacks, create minimal viable output
+        if not all_names and not all_numbers and allow_missing_headers:
+            logger.warning("No data extracted from any sheet - creating minimal viable output")
+            processing_warnings.append("No product data found in source file")
+            all_names = [""]
+            all_numbers = [""]
+        
+        # Remove duplicates
+        unique_names, unique_numbers = self.remove_duplicates(all_names, all_numbers)
+        
+        logger.info(f"Found {len(all_names)} total names, {len(unique_names)} unique")
+        logger.info(f"Found {len(all_numbers)} total numbers, {len(unique_numbers)} unique")
+        logger.info(f"Creating {max(len(unique_names), len(unique_numbers))} article pairs")
+        
+        if processing_warnings:
+            logger.warning(f"Processing completed with {len(processing_warnings)} warnings:")
+            for warning in processing_warnings:
+                logger.warning(f"  - {warning}")
+        
+        # Populate Step1 template
+        # Each pair (name, number) goes in one column starting from B
+        max_pairs = max(len(unique_names), len(unique_numbers))
+        
+        for i in range(max_pairs):
+            col = i + 2  # Column B = 2, C = 3, etc.
+            
+            # Row 1: Article name
+            if i < len(unique_names):
+                name = unique_names[i]
+                cell = step1_ws.cell(row=1, column=col, value=name)
+                logger.debug(f"Set {cell.coordinate} = '{name}'")
+            
+            # Row 2: Article number  
+            if i < len(unique_numbers):
+                number = unique_numbers[i]
+                cell = step1_ws.cell(row=2, column=col, value=number)
+                logger.debug(f"Set {cell.coordinate} = '{number}'")
+        
+        # Save output file
+        try:
+            step1_wb.save(str(output_file))
+            if processing_warnings:
+                logger.info(f"✅ Step 2 completed with warnings: {output_file}")
+            else:
+                logger.info(f"✅ Step 2 completed: {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to save file: {e}")
+            raise
+        
+        source_wb.close()
+        step1_wb.close()
+        
+        return str(output_file)
     
     def process_file(self, step1_file: Union[str, Path], 
                     source_file: Union[str, Path],

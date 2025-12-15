@@ -115,17 +115,55 @@ class DataMapper:
         for row in range(1, min(worksheet.max_row + 1, 50)):  # Search first 50 rows
             for col in range(1, worksheet.max_column + 1):
                 cell = worksheet.cell(row, col)
-                if cell.value and isinstance(cell.value, str):
-                    if header_text.lower() in cell.value.lower():
+                cell_value = self.safe_cell_value(cell)
+                if cell_value:
+                    if header_text.lower() in cell_value.lower():
                         logger.info(f"Found '{header_text}' at row {row}, column {get_column_letter(col)}")
                         return row
         
         logger.warning(f"Header '{header_text}' not found in worksheet")
         return None
     
+    def safe_cell_value(self, cell) -> str:
+        """
+        Safely extract cell value, handling formula errors and edge cases
+        
+        Args:
+            cell: openpyxl cell object
+            
+        Returns:
+            Safe string value or empty string if error
+        """
+        try:
+            if cell.value is None:
+                return ""
+            
+            # Check for Excel formula errors
+            if isinstance(cell.value, str):
+                formula_errors = ['#N/A', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?', '#NULL!', '#NUM!', '#ERROR!']
+                if any(error in str(cell.value) for error in formula_errors):
+                    logger.warning(f"Formula error detected in {cell.coordinate}: {cell.value} - using empty value")
+                    return ""
+            
+            # Handle numeric values
+            if isinstance(cell.value, (int, float)):
+                return str(cell.value)
+            
+            # Handle datetime values  
+            from datetime import datetime
+            if isinstance(cell.value, datetime):
+                return cell.value.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Convert to string and clean
+            return str(cell.value).strip()
+        
+        except Exception as e:
+            logger.warning(f"Error reading cell {getattr(cell, 'coordinate', 'unknown')}: {e} - using empty value")
+            return ""
+    
     def combine_columns(self, worksheet, row: int, col1: str, col2: str, delimiter: str = "-") -> str:
         """
-        Combine values from two columns with delimiter
+        Combine values from two columns with delimiter using safe cell reading
         
         Args:
             worksheet: openpyxl worksheet object
@@ -140,12 +178,12 @@ class DataMapper:
         col1_num = openpyxl.utils.column_index_from_string(col1)
         col2_num = openpyxl.utils.column_index_from_string(col2)
         
-        val1 = worksheet.cell(row, col1_num).value
-        val2 = worksheet.cell(row, col2_num).value
+        cell1 = worksheet.cell(row, col1_num)
+        cell2 = worksheet.cell(row, col2_num)
         
-        # Convert to strings and clean
-        str1 = str(val1).strip() if val1 is not None else ""
-        str2 = str(val2).strip() if val2 is not None else ""
+        # Use safe cell reading to handle formula errors
+        str1 = self.safe_cell_value(cell1)
+        str2 = self.safe_cell_value(cell2)
         
         # Combine with delimiter
         if str1 and str2:
@@ -175,10 +213,11 @@ class DataMapper:
         
         # Process each row until empty
         for source_row in range(start_row, source_ws.max_row + 1):
-            # Check if row has any data
+            # Check if row has any data using safe cell reading
             has_data = False
             for col in range(1, source_ws.max_column + 1):
-                if source_ws.cell(source_row, col).value is not None:
+                cell_value = self.safe_cell_value(source_ws.cell(source_row, col))
+                if cell_value:
                     has_data = True
                     break
             
@@ -200,8 +239,9 @@ class DataMapper:
                     source_col_num = openpyxl.utils.column_index_from_string(source_col)
                     target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     
-                    source_value = source_ws.cell(source_row, source_col_num).value
-                    if source_value is not None:
+                    source_cell = source_ws.cell(source_row, source_col_num)
+                    source_value = self.safe_cell_value(source_cell)
+                    if source_value:
                         target_ws.cell(current_target_row, target_col_num, source_value)
                         logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
             
@@ -229,10 +269,11 @@ class DataMapper:
         
         # Process each row until empty
         for source_row in range(start_row, source_ws.max_row + 1):
-            # Check if row has any data
+            # Check if row has any data using safe cell reading
             has_data = False
             for col in range(1, source_ws.max_column + 1):
-                if source_ws.cell(source_row, col).value is not None:
+                cell_value = self.safe_cell_value(source_ws.cell(source_row, col))
+                if cell_value:
                     has_data = True
                     break
             
@@ -254,8 +295,9 @@ class DataMapper:
                     source_col_num = openpyxl.utils.column_index_from_string(source_col)
                     target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     
-                    source_value = source_ws.cell(source_row, source_col_num).value
-                    if source_value is not None:
+                    source_cell = source_ws.cell(source_row, source_col_num)
+                    source_value = self.safe_cell_value(source_cell)
+                    if source_value:
                         target_ws.cell(current_target_row, target_col_num, source_value)
                         logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
             

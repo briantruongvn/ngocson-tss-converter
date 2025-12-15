@@ -7,7 +7,7 @@ import os
 import hashlib
 import re
 from pathlib import Path
-from typing import Union, List, Optional, Dict, Any
+from typing import Union, List, Optional, Dict, Any, Tuple
 import logging
 
 try:
@@ -486,6 +486,113 @@ class ExcelStructureValidator:
             )
     
     @classmethod
+    def validate_headers_exist_graceful(cls, file_path: Union[str, Path],
+                                       required_headers: List[str],
+                                       search_rows: int = 10,
+                                       worksheet_name: Optional[str] = None,
+                                       graceful: bool = False) -> Tuple[Dict[str, Any], List[str]]:
+        """
+        Validate that required headers exist in worksheet with optional graceful mode
+        
+        Args:
+            file_path: Path to Excel file
+            required_headers: List of required header texts
+            search_rows: Number of rows to search for headers
+            worksheet_name: Name of worksheet to check
+            graceful: If True, return warnings for missing headers instead of raising
+            
+        Returns:
+            Tuple of (result_dict, warnings_list)
+            
+        Raises:
+            HeaderNotFoundError: If required headers are missing and graceful=False
+        """
+        path = FileValidator.validate_file_format(file_path)
+        warnings = []
+        
+        if not OPENPYXL_AVAILABLE:
+            warning = "openpyxl not available, skipping header validation"
+            warnings.append(warning)
+            logger.warning(warning)
+            return {"worksheet_name": worksheet_name or "unknown", "found_headers": {}, "search_rows": search_rows}, warnings
+        
+        try:
+            wb = openpyxl.load_workbook(str(path), read_only=True)
+            
+            if worksheet_name:
+                if worksheet_name not in wb.sheetnames:
+                    wb.close()
+                    if graceful:
+                        warning = f"Worksheet '{worksheet_name}' not found, using active sheet"
+                        warnings.append(warning)
+                        wb = openpyxl.load_workbook(str(path), read_only=True)
+                        ws = wb.active
+                        worksheet_name = ws.title
+                    else:
+                        raise WorksheetNotFoundError(worksheet_name, wb.sheetnames)
+                else:
+                    ws = wb[worksheet_name]
+            else:
+                ws = wb.active
+                worksheet_name = ws.title
+            
+            found_headers = {}
+            missing_headers = []
+            
+            # Search for headers in first N rows
+            for header in required_headers:
+                found = False
+                for row in range(1, min(search_rows + 1, ws.max_row + 1)):
+                    for col in range(1, ws.max_column + 1):
+                        cell_value = ws.cell(row, col).value
+                        if cell_value and isinstance(cell_value, str):
+                            if header.lower() in cell_value.lower():
+                                found_headers[header] = {"row": row, "column": col, "value": cell_value}
+                                found = True
+                                break
+                    if found:
+                        break
+                
+                if not found:
+                    missing_headers.append(header)
+            
+            wb.close()
+            
+            if missing_headers:
+                warning = f"Missing headers in '{worksheet_name}': {', '.join(missing_headers)}"
+                warnings.append(warning)
+                
+                if not graceful:
+                    search_area = f"first {search_rows} rows of '{worksheet_name}'"
+                    raise HeaderNotFoundError(
+                        header_name=", ".join(missing_headers),
+                        search_area=search_area
+                    )
+            
+            return {
+                "worksheet_name": worksheet_name,
+                "found_headers": found_headers,
+                "search_rows": search_rows,
+                "missing_headers": missing_headers
+            }, warnings
+            
+        except (HeaderNotFoundError, WorksheetNotFoundError):
+            if not graceful:
+                raise
+            return {"worksheet_name": worksheet_name or "unknown", "found_headers": {}, "search_rows": search_rows}, warnings
+        except Exception as e:
+            error_msg = f"Failed to validate headers: {str(e)}"
+            if graceful:
+                warnings.append(error_msg)
+                return {"worksheet_name": worksheet_name or "unknown", "found_headers": {}, "search_rows": search_rows}, warnings
+            else:
+                raise FileAccessError(
+                    file_path=str(path),
+                    operation="read",
+                    reason=error_msg
+                )
+    
+    @classmethod
     def validate_headers_exist(cls, file_path: Union[str, Path],
                               required_headers: List[str],
                               search_rows: int = 10,
@@ -684,9 +791,65 @@ def validate_step1_template(file_path: Union[str, Path]) -> bool:
         raise ValidationError(f"Step1 template validation failed: {str(e)}")
 
 
-def validate_step2_input(step1_file: Union[str, Path], source_file: Union[str, Path]) -> bool:
+def validate_step2_input(step1_file: Union[str, Path], source_file: Union[str, Path], graceful: bool = False) -> Tuple[bool, List[str]]:
     """
-    Validate Step2 inputs (Step1 template + source data file)
+    Validate Step2 inputs (Step1 template + source data file) with optional graceful mode
+    
+    Args:
+        step1_file: Path to Step1 template
+        source_file: Path to source data file
+        graceful: If True, return warnings instead of raising exceptions
+        
+    Returns:
+        Tuple of (is_valid, list_of_warnings)
+        
+    Raises:
+        ValidationError: If validation fails and graceful=False
+    """
+    warnings = []
+    
+    try:
+        # Validate Step1 template
+        validate_step1_template(step1_file)
+    except Exception as e:
+        warning = f"Step1 template validation issue: {str(e)}"
+        warnings.append(warning)
+        if not graceful:
+            logger.error(f"Step2 input validation failed: {e}")
+            raise ValidationError(f"Step2 input validation failed: {str(e)}")
+        
+    try:
+        # Validate source file
+        FileValidator.validate_file_format(source_file)
+    except Exception as e:
+        warning = f"Source file validation issue: {str(e)}"
+        warnings.append(warning)
+        if not graceful:
+            logger.error(f"Step2 input validation failed: {e}")
+            raise ValidationError(f"Step2 input validation failed: {str(e)}")
+        
+    try:
+        # Check source has data
+        ExcelStructureValidator.validate_data_sufficient(source_file, min_rows=1)
+    except Exception as e:
+        warning = f"Source data sufficiency issue: {str(e)}"
+        warnings.append(warning)
+        if not graceful:
+            logger.error(f"Step2 input validation failed: {e}")
+            raise ValidationError(f"Step2 input validation failed: {str(e)}")
+    
+    if warnings:
+        logger.warning(f"Step2 input validation completed with {len(warnings)} warnings")
+        for warning in warnings:
+            logger.warning(f"  - {warning}")
+    else:
+        logger.info(f"Step2 input validation passed: {step1_file}, {source_file}")
+    
+    return len(warnings) == 0, warnings
+
+def validate_step2_input_legacy(step1_file: Union[str, Path], source_file: Union[str, Path]) -> bool:
+    """
+    Legacy validate Step2 inputs - strict mode for backward compatibility
     
     Args:
         step1_file: Path to Step1 template
@@ -698,22 +861,8 @@ def validate_step2_input(step1_file: Union[str, Path], source_file: Union[str, P
     Raises:
         ValidationError: If validation fails
     """
-    try:
-        # Validate Step1 template
-        validate_step1_template(step1_file)
-        
-        # Validate source file
-        FileValidator.validate_file_format(source_file)
-        
-        # Check source has data
-        ExcelStructureValidator.validate_data_sufficient(source_file, min_rows=1)
-        
-        logger.info(f"Step2 input validation passed: {step1_file}, {source_file}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Step2 input validation failed: {e}")
-        raise ValidationError(f"Step2 input validation failed: {str(e)}")
+    is_valid, warnings = validate_step2_input(step1_file, source_file, graceful=False)
+    return is_valid
 
 
 def validate_step3_input(step2_file: Union[str, Path]) -> bool:
