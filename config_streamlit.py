@@ -567,11 +567,22 @@ CUSTOM_CSS = """
     [data-testid="stMarkdownContainer"] h1,
     [data-testid="stMarkdownContainer"] .stCaption,
     div[data-testid="element-container"] h1,
-    div[data-testid="element-container"] .stCaption {
+    div[data-testid="element-container"] .stCaption,
+    div[data-testid="stMarkdownContainer"] p,
+    p[data-testid="stCaption"] {
         text-align: center !important;
         width: 100% !important;
         margin-left: auto !important;
         margin-right: auto !important;
+    }
+    
+    /* Additional targeting for caption text */
+    .stApp [data-testid="element-container"] p,
+    .stApp div p:has-text("Convert Ngoc Son Internal TSS"),
+    .stApp p:contains("Convert") {
+        text-align: center !important;
+        width: 100% !important;
+        margin: 0 auto !important;
     }
     
     /* Fix sidebar text overlap */
@@ -736,6 +747,18 @@ CUSTOM_CSS = """
             header.style.marginRight = 'auto';
             header.style.width = '100%';
             header.style.display = 'block';
+        });
+        
+        // Center Streamlit title and caption
+        const streamlitHeaders = document.querySelectorAll('h1, .stCaption, [data-testid="stMarkdownContainer"] p');
+        streamlitHeaders.forEach(header => {
+            if (header.textContent.includes('Ngoc Son') || header.textContent.includes('Convert Ngoc Son')) {
+                header.style.textAlign = 'center';
+                header.style.marginLeft = 'auto';
+                header.style.marginRight = 'auto';
+                header.style.width = '100%';
+                header.style.display = 'block';
+            }
         });
         
         // Also center parent containers

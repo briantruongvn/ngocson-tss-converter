@@ -176,26 +176,33 @@ def main():
                 }
                 
             if st.session_state.get('uploaded_file_info') and st.button("🚀 Start Conversion", type="primary"):
-                file_info = st.session_state.uploaded_file_info
-                file_data = file_info['data']
-                filename = file_info['name']
-                
-                # Start processing
-                st.session_state.processing = True
-                st.session_state.processing_complete = False
-                st.session_state.output_file_path = None
-                st.session_state.processing_start_time = time.time()
-                
-                # Reset progress
-                st.session_state.progress_data = {
-                    "current_step": 0,
-                    "step_status": {f"step{i}": "pending" for i in range(1, 6)},
-                    "message": "Starting processing...",
-                    "error": False
-                }
-                
-                # Start synchronous processing
-                process_file_sync(file_data, filename)
+                try:
+                    file_info = st.session_state.uploaded_file_info
+                    file_data = file_info['data']
+                    filename = file_info['name']
+                    
+                    # Start processing
+                    st.session_state.processing = True
+                    st.session_state.processing_complete = False
+                    st.session_state.output_file_path = None
+                    st.session_state.processing_start_time = time.time()
+                    
+                    # Reset progress
+                    st.session_state.progress_data = {
+                        "current_step": 0,
+                        "step_status": {f"step{i}": "pending" for i in range(1, 6)},
+                        "message": "Starting processing...",
+                        "error": False
+                    }
+                    
+                    # Start synchronous processing
+                    logger.info(f"Starting file processing: {filename}")
+                    process_file_sync(file_data, filename)
+                    
+                except Exception as e:
+                    logger.error(f"Error starting conversion: {e}")
+                    st.error(f"Error starting conversion: {str(e)}")
+                    st.session_state.processing = False
     
     else:
         # Full width for processing and results  
