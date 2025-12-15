@@ -426,8 +426,19 @@ CUSTOM_CSS = """
     
     /* Button text standardization */
     .stButton button {
-        font-size: 1rem !important;
+        font-size: 1.2rem !important;
         font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+    }
+    
+    /* Primary button specific styling */
+    .stButton > button[kind="primary"] {
+        font-size: 1.2rem !important;
+        font-weight: 700 !important;
+        padding: 0.75rem 1.5rem !important;
+        z-index: 100 !important;
+        position: relative !important;
+        margin: 1rem 0 !important;
     }
     
     /* Progress text standardization */
@@ -459,6 +470,17 @@ CUSTOM_CSS = """
         
         .progress-title {
             font-size: 1rem !important;
+        }
+        
+        /* Mobile button adjustments */
+        .stButton button {
+            font-size: 1.1rem !important;
+            padding: 0.65rem 1.25rem !important;
+        }
+        
+        .stButton > button[kind="primary"] {
+            font-size: 1.1rem !important;
+            padding: 0.65rem 1.25rem !important;
         }
         
         .upload-area-compact {
