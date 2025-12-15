@@ -251,7 +251,6 @@ class StreamlitTSSPipeline:
             raise TSConverterError(f"Step 1 failed: {str(e)}")
     
     def _run_step2(self, step1_output: Path, source_file: Path, output_dir: Path) -> Path:
-<<<<<<< HEAD
         """Run Step 2: Data Extraction with graceful fallbacks and retry logic"""
         with ResourceManager() as rm:
             try:
@@ -298,21 +297,6 @@ class StreamlitTSSPipeline:
                     raise TSConverterError(f"Data extraction failed: {str(e)}")
                     
                 raise TSConverterError(f"Data extraction failed: {str(e)}")
-=======
-        """Run Step 2: Data Extraction"""
-        try:
-            extractor = step2_data_extraction.DataExtractor()
-            output_file = extractor.process_file(str(step1_output), str(source_file))
-            
-            # Move output to session output directory
-            output_path = Path(output_file)
-            session_output = output_dir / output_path.name
-            shutil.move(output_path, session_output)
-            
-            return session_output
-        except Exception as e:
-            raise TSConverterError(f"Step 2 failed: {str(e)}")
->>>>>>> parent of 7756cf8 (🔒 PHASE 1: Security & Stability Improvements)
     
     def _run_step3(self, source_file: Path, step2_output: Path, output_dir: Path) -> Path:
         """Run Step 3: Data Mapping"""
