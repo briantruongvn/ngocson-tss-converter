@@ -108,30 +108,36 @@ def inject_custom_css():
     
     st.markdown(hide_streamlit_js, unsafe_allow_html=True)
 
-def render_app_header():
-    """Render main application header"""
-    # Use Streamlit native components for proper centering
-    st.markdown("<div style='text-align: center; margin: 0 auto; max-width: 80%;'>", unsafe_allow_html=True)
-    st.title("📊 Ngoc Son Internal TSS converter")
-    st.caption("Convert Ngoc Son Internal TSS to Standard Internal TSS")
-    st.markdown("</div>", unsafe_allow_html=True)
+def render_app_header(compact: bool = False):
+    """Render main application header with optional compact mode"""
+    # Compact styling for better space utilization
+    header_margin = "0.5rem auto" if compact else "0 auto"
+    separator_margin = "0.75rem auto" if compact else "1.5rem auto"
     
-    # Add shorter separator line that matches content width
-    st.markdown("""
-        <div style='text-align: center; margin: 1.5rem auto;'>
-            <hr style='width: 60%; max-width: 600px; margin: 0 auto; border: none; border-top: 1px solid #e5e7eb;'>
+    st.markdown(f"""
+        <div class="app-header-container" style='text-align: center; margin: {header_margin}; max-width: 90%;'>
+            <h1 class="compact-title">📊 Ngoc Son Internal TSS converter</h1>
+            <p class="compact-subtitle">Convert Ngoc Son Internal TSS to Standard Internal TSS</p>
         </div>
     """, unsafe_allow_html=True)
+    
+    # Compact separator line
+    if not compact:
+        st.markdown(f"""
+            <div style='text-align: center; margin: {separator_margin};'>
+                <hr style='width: 60%; max-width: 600px; margin: 0 auto; border: none; border-top: 1px solid #e5e7eb;'>
+            </div>
+        """, unsafe_allow_html=True)
 
 def render_file_upload_area() -> Optional[bytes]:
     """
-    Render file upload area with validation
+    Render compact file upload area with validation
     Returns uploaded file bytes if valid
     """
     st.markdown("""
-        <div class="upload-area">
-            <h3>📁 Upload Excel File</h3>
-            <p>Select Excel file (.xlsx) to convert</p>
+        <div class="upload-area-compact">
+            <h4 class="upload-title">📁 Upload Excel File</h4>
+            <p class="upload-subtitle">Select .xlsx file to convert</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -159,20 +165,23 @@ def render_file_upload_area() -> Optional[bytes]:
     
     return None
 
-def render_progress_section(current_step: int = 0, step_status: Dict[str, str] = None):
+def render_progress_section(current_step: int = 0, step_status: Dict[str, str] = None, compact: bool = True):
     """
-    Render progress section with step indicators
+    Render compact progress section with step indicators
     
     Args:
         current_step: Current step number (0-5)
         step_status: Dict with step status ('pending', 'running', 'completed', 'error')
+        compact: Whether to use compact mode for better space utilization
     """
     if step_status is None:
         step_status = {f"step{i}": "pending" for i in range(1, 6)}
     
-    st.markdown("""
-        <div class="progress-container">
-            <h3>🔄 Tiến trình xử lý</h3>
+    container_class = "progress-container-compact" if compact else "progress-container"
+    
+    st.markdown(f"""
+        <div class="{container_class}">
+            <h4 class="progress-title">🔄 Processing</h4>
         </div>
     """, unsafe_allow_html=True)
     
@@ -186,49 +195,61 @@ def render_progress_section(current_step: int = 0, step_status: Dict[str, str] =
     progress_value = (completed_steps + (0.5 if running_steps > 0 else 0)) / 5
     progress_percentage = int(progress_value * 100)
     
-    # Progress bar with percentage
-    st.progress(progress_value, text=f"📊 Tiến độ: {progress_percentage}% ({completed_steps}/5 steps hoàn thành)")
+    # Compact progress bar
+    progress_text = f"📊 {progress_percentage}% ({completed_steps}/5 steps)"
+    st.progress(progress_value, text=progress_text)
     
-    # Show current status
-    if running_steps > 0:
-        st.info(f"⏳ Đang xử lý step {current_step}... Vui lòng đợi.")
-    elif completed_steps == 5:
-        st.success("✅ Tất cả steps đã hoàn thành!")
-    elif completed_steps > 0:
-        st.info(f"🔄 Đã hoàn thành {completed_steps}/5 steps")
-    
-    # Step indicators
-    for i in range(1, 6):
-        step_key = f"step{i}"
-        step_info = step_config[step_key]
-        status = step_status.get(step_key, "pending")
+    if compact:
+        # Compact status - only show current step
+        if running_steps > 0:
+            current_step_info = step_config.get(f"step{current_step}", {})
+            current_step_name = current_step_info.get('name', f'Step {current_step}')
+            st.info(f"⏳ {current_step_name}...")
+        elif completed_steps == 5:
+            st.success("✅ Completed!")
+        elif any(status == "error" for status in step_status.values()):
+            st.error("❌ Error occurred")
+    else:
+        # Full status display
+        if running_steps > 0:
+            st.info(f"⏳ Đang xử lý step {current_step}... Vui lòng đợi.")
+        elif completed_steps == 5:
+            st.success("✅ Tất cả steps đã hoàn thành!")
+        elif completed_steps > 0:
+            st.info(f"🔄 Đã hoàn thành {completed_steps}/5 steps")
         
-        # Status icon and color
-        if status == "completed":
-            icon = "✅"
-            css_class = "step-completed"
-        elif status == "running":
-            icon = "⏳"
-            css_class = "step-running"
-        elif status == "error":
-            icon = "❌"
-            css_class = "step-error"
-        else:
-            icon = "⏸️"
-            css_class = "step-pending"
-        
-        # Show estimated time for running step
-        time_info = ""
-        if status == "running":
-            time_info = f"<br><small>⏱️ Ước tính: {step_info.get('estimated_time', '?')} </small>"
-        
-        st.markdown(f"""
-            <div class="step-indicator {css_class}">
-                <strong>{icon} Step {i}: {step_info['name']}</strong><br>
-                <small>{step_info['description']}</small>
-                {time_info}
-            </div>
-        """, unsafe_allow_html=True)
+        # Step indicators - only in non-compact mode
+        for i in range(1, 6):
+            step_key = f"step{i}"
+            step_info = step_config[step_key]
+            status = step_status.get(step_key, "pending")
+            
+            # Status icon and color
+            if status == "completed":
+                icon = "✅"
+                css_class = "step-completed"
+            elif status == "running":
+                icon = "⏳"
+                css_class = "step-running"
+            elif status == "error":
+                icon = "❌"
+                css_class = "step-error"
+            else:
+                icon = "⏸️"
+                css_class = "step-pending"
+            
+            # Show estimated time for running step
+            time_info = ""
+            if status == "running":
+                time_info = f"<br><small>⏱️ Ước tính: {step_info.get('estimated_time', '?')} </small>"
+            
+            st.markdown(f"""
+                <div class="step-indicator {css_class}">
+                    <strong>{icon} Step {i}: {step_info['name']}</strong><br>
+                    <small>{step_info['description']}</small>
+                    {time_info}
+                </div>
+            """, unsafe_allow_html=True)
 
 def render_download_section(output_file_path: Optional[Path] = None, 
                           processing_stats: Optional[Dict[str, Any]] = None):

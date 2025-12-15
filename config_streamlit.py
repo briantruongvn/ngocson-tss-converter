@@ -143,7 +143,43 @@ CUSTOM_CSS = """
         width: 100% !important;
     }
     
-    /* Upload area styling */
+    /* Upload area styling - compact version */
+    .upload-area-compact {
+        border: 1px dashed #d1d5db;
+        border-radius: 6px;
+        padding: 0.75rem;
+        text-align: center;
+        margin: 0.5rem 0;
+        background-color: #f9fafb;
+        transition: all 0.15s ease;
+    }
+    
+    /* Compact spacing for file uploader */
+    .stFileUploader {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .upload-area-compact:hover {
+        border-color: #9ca3af;
+        background-color: #f3f4f6;
+    }
+    
+    .upload-title {
+        color: #374151 !important;
+        font-weight: 500 !important;
+        margin: 0 0 0.25rem 0 !important;
+        font-size: 0.9rem !important;
+    }
+    
+    .upload-subtitle {
+        color: #6b7280 !important;
+        font-weight: 400 !important;
+        font-size: 0.75rem !important;
+        margin: 0 !important;
+    }
+    
+    /* Legacy upload area - keep for compatibility */
     .upload-area {
         border: 1px dashed #d1d5db;
         border-radius: 8px;
@@ -152,11 +188,6 @@ CUSTOM_CSS = """
         margin: 0.125rem 0 0.375rem 0;
         background-color: #f9fafb;
         transition: all 0.15s ease;
-    }
-    
-    /* Add spacing for file uploader */
-    .stFileUploader {
-        margin-top: 1rem;
     }
     
     .upload-area:hover {
@@ -180,7 +211,23 @@ CUSTOM_CSS = """
         margin-bottom: 0;
     }
     
-    /* Progress bar container */
+    /* Progress bar container - compact version */
+    .progress-container-compact {
+        margin: 0.5rem 0;
+        padding: 0.75rem;
+        background-color: #ffffff;
+        border-radius: 4px;
+        border: 1px solid #e5e7eb;
+    }
+    
+    .progress-title {
+        color: #111827 !important;
+        font-weight: 500 !important;
+        margin: 0 0 0.5rem 0 !important;
+        font-size: 0.9rem !important;
+    }
+    
+    /* Legacy progress container */
     .progress-container {
         margin: 1rem 0;
         padding: 1rem;
@@ -354,10 +401,42 @@ CUSTOM_CSS = """
         color: #ffffff !important;
     }
     
-    /* Compact layout adjustments */
+    /* Compact layout adjustments for better space utilization */
     .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* Reduce default Streamlit spacing */
+    .stMarkdown {
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Responsive optimizations */
+    @media (max-width: 768px) {
+        .app-header-container {
+            max-width: 95% !important;
+        }
+        
+        .compact-title {
+            font-size: 1.25rem !important;
+        }
+        
+        .upload-area-compact {
+            padding: 0.5rem !important;
+            margin: 0.25rem 0 !important;
+        }
+        
+        .progress-container-compact {
+            padding: 0.5rem !important;
+            margin: 0.25rem 0 !important;
+        }
+    }
+    
+    /* Viewport height optimization */
+    .main .block-container {
+        min-height: auto !important;
     }
     
     .stMarkdown h2 {
@@ -600,6 +679,29 @@ CUSTOM_CSS = """
     .stApp .block-container > div:first-child {
         text-align: center !important;
         margin: 0 auto !important;
+    }
+    
+    /* Compact header styling */
+    .app-header-container {
+        margin: 0.5rem auto !important;
+        text-align: center !important;
+    }
+    
+    .compact-title {
+        font-size: 1.5rem !important;
+        font-weight: 600 !important;
+        color: #111827 !important;
+        margin: 0.5rem 0 0.25rem 0 !important;
+        text-align: center !important;
+        line-height: 1.2 !important;
+    }
+    
+    .compact-subtitle {
+        font-size: 0.875rem !important;
+        color: #6b7280 !important;
+        margin: 0 0 0.5rem 0 !important;
+        text-align: center !important;
+        line-height: 1.4 !important;
     }
     
     /* Fix sidebar text overlap */

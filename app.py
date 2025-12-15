@@ -151,16 +151,17 @@ def main():
     # Inject custom CSS
     inject_custom_css()
     
-    # Render header - force center with column layout
-    col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
-    with col2:
-        render_app_header()
+    # Determine layout state for optimal space usage
+    is_compact_mode = st.session_state.processing or st.session_state.processing_complete
     
-    # Main content area with responsive layout
+    # Render header with appropriate compactness
+    render_app_header(compact=is_compact_mode)
+    
+    # Main content area with optimized layout
     if not st.session_state.processing and not st.session_state.processing_complete:
-        # Centered layout for upload only
-        _, center_col, _ = st.columns([1, 2, 1])
-        with center_col:
+        # Responsive layout for upload
+        col1, col2, col3 = st.columns([0.5, 2, 0.5])
+        with col2:
             file_data = render_file_upload_area()
             
             if file_data is not None:
@@ -203,31 +204,37 @@ def main():
                     st.session_state.processing = False
     
     else:
-        # Full width for processing and results  
-        # Simple status during processing
+        # Processing and results with minimal spacing
         if st.session_state.processing:
-            with st.spinner("🔄 Processing... Please wait"):
-                progress_data = st.session_state.progress_data
-                if progress_data.get("error"):
-                    render_error_message(
-                        progress_data.get("message", "An error occurred"),
-                        details=st.session_state.processing_stats.get("error_details")
-                    )
+            # Compact progress display - prioritize visibility
+            progress_data = st.session_state.progress_data
+            if progress_data.get("error"):
+                render_error_message(
+                    progress_data.get("message", "An error occurred"),
+                    details=st.session_state.processing_stats.get("error_details")
+                )
+            else:
+                # Show compact progress in main area for visibility
+                render_progress_section(
+                    current_step=progress_data.get("current_step", 0),
+                    step_status=progress_data.get("step_status", {}),
+                    compact=True
+                )
         
-        # Download section - centered
+        # Download section - optimized spacing
         if st.session_state.processing_complete and st.session_state.output_file_path:
-            _, center_col, _ = st.columns([1, 2, 1])
-            with center_col:
-                st.markdown("## ⬇️ Download Results")
+            col1, col2, col3 = st.columns([0.5, 2, 0.5])
+            with col2:
+                st.markdown("### ⬇️ Download Results")
                 render_download_section(
                     output_file_path=st.session_state.output_file_path,
                     processing_stats=st.session_state.processing_stats
                 )
         
-        # Reset/Clear section - centered
+        # Reset/Clear section - compact
         if st.session_state.processing_complete or st.session_state.progress_data.get("error"):
-            _, center_col, _ = st.columns([1, 2, 1])
-            with center_col:
+            col1, col2, col3 = st.columns([0.5, 2, 0.5])
+            with col2:
                 col_reset, col_clear = st.columns(2, gap="small")
                 
                 with col_reset:
