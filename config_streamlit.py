@@ -167,15 +167,15 @@ CUSTOM_CSS = """
     
     .upload-title {
         color: #374151 !important;
-        font-weight: 500 !important;
+        font-weight: 600 !important;
         margin: 0 0 0.25rem 0 !important;
-        font-size: 0.9rem !important;
+        font-size: 1.1rem !important;
     }
     
     .upload-subtitle {
         color: #6b7280 !important;
         font-weight: 400 !important;
-        font-size: 0.75rem !important;
+        font-size: 0.9rem !important;
         margin: 0 !important;
     }
     
@@ -222,9 +222,9 @@ CUSTOM_CSS = """
     
     .progress-title {
         color: #111827 !important;
-        font-weight: 500 !important;
+        font-weight: 600 !important;
         margin: 0 0 0.5rem 0 !important;
-        font-size: 0.9rem !important;
+        font-size: 1.1rem !important;
     }
     
     /* Legacy progress container */
@@ -413,6 +413,28 @@ CUSTOM_CSS = """
         margin-bottom: 0.5rem !important;
     }
     
+    /* Standardize body text sizes */
+    .stMarkdown p, .element-container p {
+        font-size: 0.9rem !important;
+        line-height: 1.5 !important;
+    }
+    
+    /* File uploader text standardization */
+    .stFileUploader label, .stFileUploader div {
+        font-size: 0.9rem !important;
+    }
+    
+    /* Button text standardization */
+    .stButton button {
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Progress text standardization */
+    .stProgress div {
+        font-size: 0.9rem !important;
+    }
+    
     /* Responsive optimizations */
     @media (max-width: 768px) {
         .app-header-container {
@@ -420,7 +442,23 @@ CUSTOM_CSS = """
         }
         
         .compact-title {
-            font-size: 1.25rem !important;
+            font-size: 1.75rem !important;
+        }
+        
+        .compact-subtitle {
+            font-size: 0.9rem !important;
+        }
+        
+        .upload-title {
+            font-size: 1rem !important;
+        }
+        
+        .upload-subtitle {
+            font-size: 0.85rem !important;
+        }
+        
+        .progress-title {
+            font-size: 1rem !important;
         }
         
         .upload-area-compact {
@@ -688,8 +726,8 @@ CUSTOM_CSS = """
     }
     
     .compact-title {
-        font-size: 1.5rem !important;
-        font-weight: 600 !important;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
         color: #111827 !important;
         margin: 0.5rem 0 0.25rem 0 !important;
         text-align: center !important;
@@ -697,7 +735,7 @@ CUSTOM_CSS = """
     }
     
     .compact-subtitle {
-        font-size: 0.875rem !important;
+        font-size: 1rem !important;
         color: #6b7280 !important;
         margin: 0 0 0.5rem 0 !important;
         text-align: center !important;
