@@ -442,7 +442,7 @@ CUSTOM_CSS = """
         }
         
         .compact-title {
-            font-size: 1.75rem !important;
+            font-size: 2.1rem !important;
         }
         
         .compact-subtitle {
@@ -726,7 +726,7 @@ CUSTOM_CSS = """
     }
     
     .compact-title {
-        font-size: 2rem !important;
+        font-size: 2.4rem !important;
         font-weight: 700 !important;
         color: #111827 !important;
         margin: 0.5rem 0 0.25rem 0 !important;

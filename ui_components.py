@@ -116,7 +116,7 @@ def render_app_header(compact: bool = False):
     
     st.markdown(f"""
         <div class="app-header-container" style='text-align: center; margin: {header_margin}; max-width: 90%;'>
-            <h1 class="compact-title">📊 Ngoc Son Internal TSS converter</h1>
+            <h1 class="compact-title">📊 Ngoc Son Internal TSS Converter</h1>
             <p class="compact-subtitle">Convert Ngoc Son Internal TSS to Standard Internal TSS</p>
         </div>
     """, unsafe_allow_html=True)
