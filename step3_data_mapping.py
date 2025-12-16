@@ -15,6 +15,7 @@ import shutil
 
 from common.validation import validate_step3_input, FileValidator
 from common.exceptions import TSConverterError
+from common.config import get_config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,10 +25,10 @@ class DataMapper:
     """
     Data Mapper for Step 3
     
-    Maps data from source Excel file to Step2 template:
-    - Processes sheets containing 'test plan' or 'summary'
-    - Special mapping for 'finished product' sheet
-    - General mapping for other sheets
+    Maps data from source Excel file to Step2 template based on sheet naming patterns:
+    - F-type sheets (F-[Finished products]): Special mapping with header search
+    - M-type sheets (M-[Material type]): Direct mapping, continues after existing data
+    - C-type sheets (C-[Component type]): Direct mapping, continues after existing data
     - Combines specified columns with delimiter
     """
     
@@ -36,40 +37,51 @@ class DataMapper:
         self.output_dir = self.base_dir / "output"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Column mappings for different sheet types
-        self.finished_product_mapping = {
-            'C': 'D',   # C -> D
-            'H': 'F',   # H -> F
-            'KL': 'I',  # K & L combined -> I
-            'M': 'J',   # M -> J
-            'N': 'K',   # N -> K
-            'O': 'L',   # O -> L
-            'P': 'M',   # P -> M
-            'Q': 'N',   # Q -> N
-            'S': 'O',   # S -> O
-            'T': 'H',   # T -> H
-            'W': 'P'    # W -> P
-        }
+        # Get configuration
+        self.config = get_config()
         
-        self.other_sheets_mapping = {
-            'B': 'B',   # B -> B
-            'C': 'C',   # C -> C
-            'I': 'D',   # I -> D
-            'J': 'F',   # J -> F
-            'K': 'E',   # K -> E
-            'NO': 'I',  # N & O combined -> I
-            'P': 'J',   # P -> J
-            'Q': 'K',   # Q -> K
-            'R': 'L',   # R -> L
-            'S': 'M',   # S -> M
-            'T': 'N',   # T -> N
-            'W': 'H',   # W -> H
-            'Z': 'P'    # Z -> P
-        }
+        # Column mappings for different sheet types
+        self.f_type_mapping = self.config.get('step3.f_type_mapping', {
+            'C': 'D', 'H': 'F', 'KL': 'I', 'M': 'J', 'N': 'K', 
+            'O': 'L', 'P': 'M', 'Q': 'N', 'S': 'O', 'T': 'H', 'W': 'P'
+        })
+        
+        self.m_type_mapping = self.config.get('step3.m_type_mapping', {
+            'B': 'B', 'C': 'C', 'I': 'D', 'J': 'F', 'K': 'E', 
+            'NO': 'I', 'P': 'J', 'Q': 'K', 'R': 'L', 'S': 'M', 'T': 'N', 'W': 'H', 'Z': 'P'
+        })
+        
+        self.c_type_mapping = self.config.get('step3.c_type_mapping', {
+            'B': 'B', 'C': 'C', 'H': 'D', 'I': 'F', 'J': 'E', 
+            'MN': 'I', 'O': 'J', 'P': 'K', 'Q': 'L', 'R': 'M', 'S': 'N', 'V': 'H', 'Y': 'P'
+        })
     
+    def get_sheet_type(self, sheet_name: str) -> Optional[str]:
+        """
+        Determine the type of sheet based on its name
+        
+        Args:
+            sheet_name: Name of the worksheet
+            
+        Returns:
+            Sheet type ('F', 'M', 'C') or None if not recognized
+        """
+        if sheet_name.upper().startswith('F-'):
+            logger.info(f"Detected F-type sheet: '{sheet_name}'")
+            return 'F'
+        elif sheet_name.upper().startswith('M-'):
+            logger.info(f"Detected M-type sheet: '{sheet_name}'")
+            return 'M'
+        elif sheet_name.upper().startswith('C-'):
+            logger.info(f"Detected C-type sheet: '{sheet_name}'")
+            return 'C'
+        else:
+            logger.debug(f"Sheet '{sheet_name}' does not match F/M/C pattern")
+            return None
+            
     def is_sheet_relevant(self, sheet_name: str, worksheet) -> bool:
         """
-        Check if sheet is relevant for processing
+        Check if sheet is relevant for processing based on naming pattern
         
         Args:
             sheet_name: Name of the worksheet
@@ -85,20 +97,13 @@ class DataMapper:
                 logger.debug(f"Skipping empty sheet '{sheet_name}'")
                 return False
         
-        # Accept sheets with 'test plan', 'summary', or process all sheets that aren't empty
-        sheet_lower = sheet_name.lower()
-        if ('test plan' in sheet_lower or 'summary' in sheet_lower or 
-            'finished product' in sheet_lower or 'textile' in sheet_lower):
-            logger.info(f"Processing sheet: '{sheet_name}'")
+        # Only process sheets that match F/M/C pattern
+        sheet_type = self.get_sheet_type(sheet_name)
+        if sheet_type is not None:
+            logger.info(f"Processing {sheet_type}-type sheet: '{sheet_name}'")
             return True
         
-        # For other sheets, check if they have substantial content
-        # This allows processing of sheets that may contain test data but don't have specific names
-        if worksheet.max_row > 10:  # Sheets with more than 10 rows might have useful data
-            logger.info(f"Processing sheet: '{sheet_name}' (has content)")
-            return True
-        
-        logger.debug(f"Skipping sheet '{sheet_name}' - no relevant content")
+        logger.debug(f"Skipping sheet '{sheet_name}' - not F/M/C type")
         return False
     
     def find_header_row(self, worksheet, header_text: str = "product combination") -> Optional[int]:
@@ -195,9 +200,9 @@ class DataMapper:
         else:
             return ""
     
-    def map_finished_product_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
+    def map_f_type_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
         """
-        Map data from finished product sheet using special mapping
+        Map data from F-type sheet (F-[Finished products])
         
         Args:
             source_ws: Source worksheet
@@ -208,7 +213,7 @@ class DataMapper:
         Returns:
             Next available row in target worksheet
         """
-        logger.info(f"Mapping finished product data from row {start_row}")
+        logger.info(f"Mapping F-type data from row {start_row}")
         current_target_row = target_start_row
         
         # Process each row until empty
@@ -228,7 +233,7 @@ class DataMapper:
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
             # Apply column mappings
-            for source_col, target_col in self.finished_product_mapping.items():
+            for source_col, target_col in self.f_type_mapping.items():
                 if source_col == 'KL':  # Special case: combine K & L
                     combined_value = self.combine_columns(source_ws, source_row, 'K', 'L')
                     target_col_num = openpyxl.utils.column_index_from_string(target_col)
@@ -248,12 +253,12 @@ class DataMapper:
             current_target_row += 1
         
         rows_mapped = current_target_row - target_start_row
-        logger.info(f"Mapped {rows_mapped} rows from finished product sheet")
+        logger.info(f"Mapped {rows_mapped} rows from F-type sheet")
         return current_target_row
     
-    def map_other_sheet_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
+    def map_m_type_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
         """
-        Map data from other sheets using general mapping
+        Map data from M-type sheet (M-[Material type])
         
         Args:
             source_ws: Source worksheet
@@ -264,7 +269,7 @@ class DataMapper:
         Returns:
             Next available row in target worksheet
         """
-        logger.info(f"Mapping other sheet data from row {start_row}")
+        logger.info(f"Mapping M-type data from row {start_row}")
         current_target_row = target_start_row
         
         # Process each row until empty
@@ -284,7 +289,7 @@ class DataMapper:
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
             # Apply column mappings
-            for source_col, target_col in self.other_sheets_mapping.items():
+            for source_col, target_col in self.m_type_mapping.items():
                 if source_col == 'NO':  # Special case: combine N & O
                     combined_value = self.combine_columns(source_ws, source_row, 'N', 'O')
                     target_col_num = openpyxl.utils.column_index_from_string(target_col)
@@ -304,7 +309,63 @@ class DataMapper:
             current_target_row += 1
         
         rows_mapped = current_target_row - target_start_row
-        logger.info(f"Mapped {rows_mapped} rows from other sheet")
+        logger.info(f"Mapped {rows_mapped} rows from M-type sheet")
+        return current_target_row
+        
+    def map_c_type_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
+        """
+        Map data from C-type sheet (C-[Component type])
+        
+        Args:
+            source_ws: Source worksheet
+            target_ws: Target worksheet
+            start_row: Starting row in source (1-based)
+            target_start_row: Starting row in target (1-based)
+            
+        Returns:
+            Next available row in target worksheet
+        """
+        logger.info(f"Mapping C-type data from row {start_row}")
+        current_target_row = target_start_row
+        
+        # Process each row until empty
+        for source_row in range(start_row, source_ws.max_row + 1):
+            # Check if row has any data using safe cell reading
+            has_data = False
+            for col in range(1, source_ws.max_column + 1):
+                cell_value = self.safe_cell_value(source_ws.cell(source_row, col))
+                if cell_value:
+                    has_data = True
+                    break
+            
+            if not has_data:
+                logger.debug(f"Stopping at empty row {source_row}")
+                break
+            
+            logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
+            
+            # Apply column mappings
+            for source_col, target_col in self.c_type_mapping.items():
+                if source_col == 'MN':  # Special case: combine M & N
+                    combined_value = self.combine_columns(source_ws, source_row, 'M', 'N')
+                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
+                    target_ws.cell(current_target_row, target_col_num, combined_value)
+                    logger.debug(f"Combined M&N -> {target_col}: '{combined_value}'")
+                else:
+                    # Single column mapping
+                    source_col_num = openpyxl.utils.column_index_from_string(source_col)
+                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
+                    
+                    source_cell = source_ws.cell(source_row, source_col_num)
+                    source_value = self.safe_cell_value(source_cell)
+                    if source_value:
+                        target_ws.cell(current_target_row, target_col_num, source_value)
+                        logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
+            
+            current_target_row += 1
+        
+        rows_mapped = current_target_row - target_start_row
+        logger.info(f"Mapped {rows_mapped} rows from C-type sheet")
         return current_target_row
     
     def process_file(self, source_file: Union[str, Path],
@@ -368,8 +429,6 @@ class DataMapper:
         logger.info(f"Starting data mapping at target row {next_row}")
         
         # Process each sheet in source file
-        finished_product_processed = False
-        
         for sheet_name in source_wb.sheetnames:
             worksheet = source_wb[sheet_name]
             
@@ -377,11 +436,13 @@ class DataMapper:
             if not self.is_sheet_relevant(sheet_name, worksheet):
                 continue
             
-            # Check if this is finished product sheet
-            if 'finished product' in sheet_name.lower():
-                logger.info(f"Processing finished product sheet: {sheet_name}")
+            # Get sheet type and process accordingly
+            sheet_type = self.get_sheet_type(sheet_name)
+            
+            if sheet_type == 'F':
+                logger.info(f"Processing F-type sheet: {sheet_name}")
                 
-                # Find header row
+                # Find header row for F-type sheets
                 header_row = self.find_header_row(worksheet, "product combination")
                 if header_row is None:
                     logger.warning(f"No 'product combination' found in {sheet_name}, skipping")
@@ -389,13 +450,12 @@ class DataMapper:
                 
                 # Data starts at header_row + 2
                 data_start_row = header_row + 2
-                next_row = self.map_finished_product_data(worksheet, target_ws, data_start_row, next_row)
-                finished_product_processed = True
+                next_row = self.map_f_type_data(worksheet, target_ws, data_start_row, next_row)
                 
-            else:
-                logger.info(f"Processing other sheet: {sheet_name}")
+            elif sheet_type == 'M':
+                logger.info(f"Processing M-type sheet: {sheet_name}")
                 
-                # Find header row
+                # Find header row for M-type sheets
                 header_row = self.find_header_row(worksheet, "product combination")
                 if header_row is None:
                     logger.warning(f"No 'product combination' found in {sheet_name}, skipping")
@@ -403,7 +463,20 @@ class DataMapper:
                 
                 # Data starts at header_row + 2
                 data_start_row = header_row + 2
-                next_row = self.map_other_sheet_data(worksheet, target_ws, data_start_row, next_row)
+                next_row = self.map_m_type_data(worksheet, target_ws, data_start_row, next_row)
+                
+            elif sheet_type == 'C':
+                logger.info(f"Processing C-type sheet: {sheet_name}")
+                
+                # Find header row for C-type sheets
+                header_row = self.find_header_row(worksheet, "product combination")
+                if header_row is None:
+                    logger.warning(f"No 'product combination' found in {sheet_name}, skipping")
+                    continue
+                
+                # Data starts at header_row + 2
+                data_start_row = header_row + 2
+                next_row = self.map_c_type_data(worksheet, target_ws, data_start_row, next_row)
         
         # Save output file
         try:

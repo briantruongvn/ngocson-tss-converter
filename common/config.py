@@ -62,16 +62,18 @@ class TSConverterConfig:
             "max_search_rows": 100
         },
         "step3": {
-            "finished_product_mapping": {
+            "f_type_mapping": {
                 "C": "D", "H": "F", "KL": "I", "M": "J", "N": "K", 
                 "O": "L", "P": "M", "Q": "N", "S": "O", "T": "H", "W": "P"
             },
-            "general_mapping": {
-                "E": "D", "F": "E", "G": "F", "H": "G", "L": "I", "M": "J", 
-                "N": "K", "O": "L", "P": "M", "Q": "N", "R": "O", "T": "H", "W": "P"
+            "m_type_mapping": {
+                "B": "B", "C": "C", "I": "D", "J": "F", "K": "E", 
+                "NO": "I", "P": "J", "Q": "K", "R": "L", "S": "M", "T": "N", "W": "H", "Z": "P"
             },
-            "sheet_keywords": ["test plan", "summary"],
-            "finished_product_keyword": "finished product",
+            "c_type_mapping": {
+                "B": "B", "C": "C", "H": "D", "I": "F", "J": "E", 
+                "MN": "I", "O": "J", "P": "K", "Q": "L", "R": "M", "S": "N", "V": "H", "Y": "P"
+            },
             "column_delimiter": "-"
         },
         "step4": {
