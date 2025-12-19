@@ -1,0 +1,76 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    # Run every 4 hours (conservative interval to respect ToS)
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    # Allow manual trigger for testing
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Ping Streamlit App
+      run: |
+        echo "🔄 Pinging TSS Converter App to keep it alive..."
+        
+        # Set app URL - replace with your actual Streamlit app URL
+        APP_URL="https://your-app-name.streamlit.app"
+        
+        # Add a comment with your actual URL or set it as a GitHub secret
+        # To use GitHub secret: APP_URL="${{ secrets.STREAMLIT_APP_URL }}"
+        
+        # Perform HTTP request with proper headers
+        response=$(curl -s -o /dev/null -w "%{http_code}" \
+          --connect-timeout 30 \
+          --max-time 60 \
+          --retry 3 \
+          --retry-delay 5 \
+          --user-agent "GitHub-Actions-KeepAlive/1.0 (TSS-Converter-Monitoring)" \
+          "$APP_URL")
+        
+        # Check response status
+        if [ "$response" = "200" ]; then
+          echo "✅ App is alive! HTTP Status: $response"
+          echo "✅ Ping successful at $(date -u)"
+        elif [ "$response" = "000" ]; then
+          echo "❌ Failed to connect to app (timeout or network error)"
+          exit 1
+        else
+          echo "⚠️  App responded with HTTP Status: $response"
+          # Don't fail for 4xx/5xx as app might still be starting
+          echo "ℹ️  App might be starting up, this is normal for Streamlit"
+        fi
+        
+        echo "📊 Keep-alive ping completed at $(date -u)"
+
+    - name: Log Status
+      if: always()
+      run: |
+        echo "📋 Job Status Summary:"
+        echo "- Workflow: Keep Streamlit App Alive"
+        echo "- Trigger: ${{ github.event_name }}"
+        echo "- Time: $(date -u)"
+        echo "- Repository: ${{ github.repository }}"
+        
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Keep-alive successful"
+        else
+          echo "❌ Keep-alive failed - check app status"
+        fi
+
+  notify-on-failure:
+    runs-on: ubuntu-latest
+    needs: keep-alive
+    if: failure()
+    
+    steps:
+    - name: Failure Notification
+      run: |
+        echo "🚨 Keep-Alive Failed!"
+        echo "The TSS Converter Streamlit app may be experiencing issues."
+        echo "Please check the app manually: https://your-app-name.streamlit.app"
+        echo "Time: $(date -u)"
+        echo "This might be temporary - the app should auto-recover."
