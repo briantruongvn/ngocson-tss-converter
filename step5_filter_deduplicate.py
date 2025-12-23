@@ -260,61 +260,107 @@ class DataFilter:
             logger.error(f"Input validation failed: {e}")
             raise
         
-        # Auto-generate output file if not provided
+        # Enhanced output file handling with directory management
         if output_file is None:
             base_name = step4_path.stem.replace(" - Step4", "")
             output_file = self.output_dir / f"{base_name} - Step5.xlsx"
+            logger.info(f"Auto-generated output path: {output_file}")
         else:
             output_file = Path(output_file)
+            logger.info(f"Using provided output path: {output_file}")
+            
+            # Ensure parent directory exists for provided output path
+            if not output_file.parent.exists():
+                logger.info(f"Creating output directory: {output_file.parent}")
+                output_file.parent.mkdir(parents=True, exist_ok=True)
         
-        # Validate output path is writable
+        # Validate output path is writable with enhanced error handling
         try:
             output_file = FileValidator.validate_output_writable(output_file)
+            logger.info(f"Output path validation successful: {output_file}")
         except TSConverterError as e:
             logger.error(f"Output validation failed: {e}")
-            raise
+            
+            # Fallback: try using the auto-generated path in self.output_dir
+            if output_file.parent != self.output_dir:
+                logger.info("Attempting fallback to auto-generated path...")
+                base_name = step4_path.stem.replace(" - Step4", "")
+                fallback_output = self.output_dir / f"{base_name} - Step5.xlsx"
+                try:
+                    output_file = FileValidator.validate_output_writable(fallback_output)
+                    logger.info(f"Using fallback output path: {output_file}")
+                except TSConverterError as fallback_error:
+                    logger.error(f"Fallback validation also failed: {fallback_error}")
+                    raise
+            else:
+                raise
         
         logger.info(f"Input: {step4_path}")
-        logger.info(f"Output: {output_file}")
+        logger.info(f"Final output: {output_file}")
         
-        # Copy Step4 file as starting point
-        shutil.copy2(str(step4_path), str(output_file))
-        logger.info("Copied Step4 file as base")
+        # Copy Step4 file as starting point with enhanced error handling
+        try:
+            shutil.copy2(str(step4_path), str(output_file))
+            logger.info("Copied Step4 file as base")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to copy input file to output location: {e}")
+            raise TSConverterError(f"Could not create output file: {str(e)}")
         
-        # Load workbook
-        wb = openpyxl.load_workbook(str(output_file))
-        ws = wb.active
+        # Load workbook with enhanced error handling
+        try:
+            wb = openpyxl.load_workbook(str(output_file))
+            ws = wb.active
+        except Exception as e:
+            logger.error(f"Failed to load workbook from {output_file}: {e}")
+            raise TSConverterError(f"Could not open output file for processing: {str(e)}")
         
         # Get initial stats
         initial_rows = ws.max_row
         logger.info(f"Initial rows: {initial_rows}")
         
-        # Step 5.1: Remove NA rows
-        na_removed = self.remove_na_rows(ws)
-        
-        # Step 5.2: Deduplicate SD rows
-        sd_removed = self.deduplicate_sd_rows(ws)
-        
-        # Get final stats
-        final_rows = ws.max_row
-        total_removed = na_removed + sd_removed
-        
-        logger.info("Processing Summary:")
-        logger.info(f"  Initial rows: {initial_rows}")
-        logger.info(f"  NA rows removed: {na_removed}")
-        logger.info(f"  SD duplicates removed: {sd_removed}")
-        logger.info(f"  Total rows removed: {total_removed}")
-        logger.info(f"  Final rows: {final_rows}")
-        
-        # Save output file
         try:
-            wb.save(str(output_file))
-            logger.info(f"✅ Step 5 completed: {output_file}")
-        except Exception as e:
-            logger.error(f"Failed to save file: {e}")
-            raise
-        
-        wb.close()
+            # Step 5.1: Remove NA rows
+            na_removed = self.remove_na_rows(ws)
+            
+            # Step 5.2: Deduplicate SD rows
+            sd_removed = self.deduplicate_sd_rows(ws)
+            
+            # Get final stats
+            final_rows = ws.max_row
+            total_removed = na_removed + sd_removed
+            
+            logger.info("Processing Summary:")
+            logger.info(f"  Initial rows: {initial_rows}")
+            logger.info(f"  NA rows removed: {na_removed}")
+            logger.info(f"  SD duplicates removed: {sd_removed}")
+            logger.info(f"  Total rows removed: {total_removed}")
+            logger.info(f"  Final rows: {final_rows}")
+            
+            # Save output file with enhanced error handling
+            try:
+                wb.save(str(output_file))
+                logger.info(f"✅ Step 5 completed: {output_file}")
+                
+                # Verify file was actually saved and is accessible
+                if not output_file.exists():
+                    raise TSConverterError(f"Output file was not created successfully: {output_file}")
+                    
+                file_size = output_file.stat().st_size
+                logger.info(f"Output file size: {file_size} bytes")
+                
+            except Exception as save_error:
+                logger.error(f"Failed to save file: {save_error}")
+                raise TSConverterError(f"Could not save output file: {str(save_error)}")
+                
+        except Exception as process_error:
+            logger.error(f"Processing error during Step 5: {process_error}")
+            raise TSConverterError(f"Data processing failed: {str(process_error)}")
+        finally:
+            # Always close workbook to free resources
+            try:
+                wb.close()
+            except Exception as close_error:
+                logger.warning(f"Could not close workbook properly: {close_error}")
         
         return str(output_file)
 

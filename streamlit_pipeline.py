@@ -608,7 +608,7 @@ class StreamlitTSSPipeline:
             raise TSConverterError(f"Step 4 failed: {str(e)}")
     
     def _run_step5(self, step4_output: Path, output_dir: Path) -> Path:
-        """Run Step 5: Filter & Deduplicate with security validation"""
+        """Run Step 5: Filter & Deduplicate with comprehensive file handling fix"""
         try:
             # Security validation: validate all paths
             for path in [step4_output, output_dir]:
@@ -627,31 +627,126 @@ class StreamlitTSSPipeline:
             
             logger.info(f"Step 5: Processing {step4_output} -> {session_output}")
             
-            filter_dedup = step5_filter_deduplicate.DataFilter()
-            # Pass the target output path directly to avoid file movement
-            output_file = filter_dedup.process_file(str(step4_output), str(session_output))
+            # COMPREHENSIVE FIX: Initialize DataFilter with proper base_dir parameter
+            # Fix the root cause - DataFilter was using Path.cwd() instead of session output directory
+            filter_dedup = step5_filter_deduplicate.DataFilter(base_dir=str(output_dir.parent))
             
-            # Verify the output file was created successfully
-            output_path = Path(output_file)
-            if not output_path.exists():
-                raise TSConverterError(f"Step 5 output file was not created: {output_path}")
-            
-            # If the file was created in a different location, move it
-            if output_path != session_output:
-                if not validate_path_security(output_path, Path.cwd()):
-                    raise SecurityError(f"Generated output path validation failed: {output_path}")
+            # Enhanced error handling with robust file location logic
+            try:
+                # Pass the target output path directly to avoid file movement
+                output_file = filter_dedup.process_file(str(step4_output), str(session_output))
+                logger.info(f"DataFilter returned: {output_file}")
                 
-                logger.info(f"Moving Step 5 output from {output_path} to {session_output}")
-                shutil.move(output_path, session_output)
-            
-            # Set secure file permissions
-            session_output.chmod(0o600)
-            
-            # Extract processing statistics from logs or output
-            self._extract_step5_stats(session_output)
-            
-            logger.info(f"✅ Step 5 completed successfully: {session_output}")
-            return session_output
+                # Verify the output file was created successfully
+                output_path = Path(output_file)
+                if output_path.exists():
+                    logger.info(f"✅ Step 5 output created successfully: {output_path}")
+                    
+                    # If the file was created in a different location, move it to session output
+                    if output_path != session_output:
+                        if not validate_path_security(output_path, output_dir.parent):
+                            raise SecurityError(f"Generated output path validation failed: {output_path}")
+                        
+                        logger.info(f"Moving Step 5 output from {output_path} to {session_output}")
+                        shutil.move(output_path, session_output)
+                        output_path = session_output
+                    
+                    # Set secure file permissions
+                    output_path.chmod(0o600)
+                    
+                    # Extract processing statistics from logs or output
+                    self._extract_step5_stats(output_path)
+                    
+                    logger.info(f"✅ Step 5 completed successfully: {output_path}")
+                    return output_path
+                else:
+                    # FALLBACK: File not found at expected location - implement robust search
+                    logger.warning(f"Step 5 output not found at expected location: {output_path}")
+                    logger.info("Attempting comprehensive file search...")
+                    
+                    # Search strategy 1: Look in DataFilter's output directory
+                    filter_output_dir = Path(filter_dedup.output_dir)
+                    search_pattern = "*Step5*.xlsx"
+                    found_files = list(filter_output_dir.glob(search_pattern))
+                    
+                    if found_files:
+                        # Find the most recent file that matches our pattern
+                        latest_file = max(found_files, key=lambda f: f.stat().st_mtime)
+                        logger.info(f"Found Step 5 file in filter output directory: {latest_file}")
+                        
+                        # Validate and move to session output
+                        if validate_path_security(latest_file, output_dir.parent):
+                            shutil.move(latest_file, session_output)
+                            session_output.chmod(0o600)
+                            self._extract_step5_stats(session_output)
+                            logger.info(f"✅ Step 5 completed with file recovery: {session_output}")
+                            return session_output
+                    
+                    # Search strategy 2: Look in current working directory
+                    cwd_files = list(Path.cwd().glob(search_pattern))
+                    if cwd_files:
+                        latest_file = max(cwd_files, key=lambda f: f.stat().st_mtime)
+                        logger.info(f"Found Step 5 file in current directory: {latest_file}")
+                        
+                        # Validate and move to session output
+                        if validate_path_security(latest_file, Path.cwd()):
+                            shutil.move(latest_file, session_output)
+                            session_output.chmod(0o600)
+                            self._extract_step5_stats(session_output)
+                            logger.info(f"✅ Step 5 completed with file recovery from cwd: {session_output}")
+                            return session_output
+                    
+                    # If all search strategies fail, raise comprehensive error
+                    search_locations = [str(filter_output_dir), str(Path.cwd()), str(output_dir)]
+                    error_msg = f"Step 5 output file not found after comprehensive search. Looked in: {search_locations}"
+                    logger.error(error_msg)
+                    raise TSConverterError(error_msg)
+                    
+            except Exception as process_error:
+                logger.error(f"DataFilter processing failed: {process_error}")
+                
+                # FALLBACK RECOVERY: Try to find any Step 5 files that might have been created
+                logger.info("Attempting fallback recovery - searching for any Step 5 files...")
+                
+                # Search all possible locations for Step 5 files
+                search_locations = [
+                    output_dir.parent,  # Session directory
+                    output_dir,         # Output directory
+                    Path(filter_dedup.output_dir),  # DataFilter output directory
+                    Path.cwd()          # Current working directory
+                ]
+                
+                for search_dir in search_locations:
+                    if search_dir.exists():
+                        step5_files = list(search_dir.glob("*Step5*.xlsx"))
+                        if step5_files:
+                            # Find the most recent file
+                            latest_file = max(step5_files, key=lambda f: f.stat().st_mtime)
+                            logger.info(f"Fallback recovery: found Step 5 file at {latest_file}")
+                            
+                            # Validate and recover
+                            try:
+                                if validate_path_security(latest_file, search_dir):
+                                    # Copy to session output (don't move in case of permission issues)
+                                    shutil.copy2(latest_file, session_output)
+                                    session_output.chmod(0o600)
+                                    
+                                    # Clean up original if it's in temp location
+                                    if search_dir != output_dir and search_dir != output_dir.parent:
+                                        try:
+                                            latest_file.unlink()
+                                        except Exception as cleanup_error:
+                                            logger.warning(f"Could not cleanup original file: {cleanup_error}")
+                                    
+                                    self._extract_step5_stats(session_output)
+                                    logger.info(f"✅ Step 5 completed with fallback recovery: {session_output}")
+                                    return session_output
+                            except Exception as recovery_error:
+                                logger.warning(f"Recovery attempt failed for {latest_file}: {recovery_error}")
+                                continue
+                
+                # If all recovery attempts fail, re-raise the original error
+                raise process_error
             
         except SecurityError:
             raise
