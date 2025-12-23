@@ -4,11 +4,15 @@ Provides consistent styling and functionality across the application.
 """
 
 import streamlit as st
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 from pathlib import Path
 import time
+import logging
 
 from config_streamlit import get_custom_css, get_step_config, STREAMLIT_CONFIG
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 def inject_custom_css():
     """Inject custom CSS styling into Streamlit app"""
@@ -251,16 +255,31 @@ def render_progress_section(current_step: int = 0, step_status: Dict[str, str] =
                 </div>
             """, unsafe_allow_html=True)
 
-def render_download_section(output_file_path: Optional[Path] = None, 
+def render_download_section(output_file_path: Optional[Union[str, Path]] = None, 
                           processing_stats: Optional[Dict[str, Any]] = None):
     """
     Render download section for final output
     
     Args:
-        output_file_path: Path to final output file
+        output_file_path: Path to final output file (Path object or string)
         processing_stats: Statistics from processing pipeline
     """
-    if output_file_path and output_file_path.exists():
+    # Defensive type handling - convert string to Path if needed
+    file_path = None
+    if output_file_path:
+        try:
+            if isinstance(output_file_path, str):
+                file_path = Path(output_file_path)
+            elif isinstance(output_file_path, Path):
+                file_path = output_file_path
+            else:
+                logger.warning(f"Unexpected output_file_path type: {type(output_file_path)}")
+                return
+        except (TypeError, ValueError) as e:
+            logger.error(f"Failed to convert output_file_path to Path: {e}")
+            return
+    
+    if file_path and file_path.exists():
         st.markdown("""
             <div class="download-section">
                 <h3>🎉 Processing Complete!</h3>
@@ -270,7 +289,7 @@ def render_download_section(output_file_path: Optional[Path] = None,
         
         # Read file for download
         try:
-            with open(output_file_path, "rb") as file:
+            with open(file_path, "rb") as file:
                 file_data = file.read()
             
             download_filename = f"TSS_Converted_{int(time.time())}.xlsx"

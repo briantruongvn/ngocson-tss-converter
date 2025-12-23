@@ -324,7 +324,16 @@ def main():
         
         # Download section - optimized spacing with secure session state
         processing_complete = safe_get_session_value('processing_complete', False)
-        output_file_path = safe_get_session_value('output_file_path')
+        output_file_path_str = safe_get_session_value('output_file_path')
+        
+        # Convert string to Path object for proper .exists() method support
+        output_file_path = None
+        if output_file_path_str:
+            try:
+                output_file_path = Path(output_file_path_str)
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Failed to convert output_file_path to Path: {e}")
+                output_file_path = None
         
         if processing_complete and output_file_path:
             col1, col2, col3 = st.columns([0.5, 2, 0.5])
