@@ -22,6 +22,7 @@ import step5_filter_deduplicate
 from common.exceptions import TSConverterError
 from common.validation import FileValidator
 from common.quality_reporter import get_global_reporter, reset_global_reporter
+from common.error_handler import global_error_handler
 from common.security import FileValidator as SecurityFileValidator, validate_path_security, sanitize_filename, generate_secure_filename, SecurityError
 from common.session_manager import session_manager, ProcessingState, safe_update_session_state, safe_get_session_value
 from config_streamlit import get_temp_directory, STREAMLIT_CONFIG
