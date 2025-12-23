@@ -353,7 +353,12 @@ class StreamlitTSSPipeline:
             if progress_callback:
                 progress_callback.start_step(5, "Filter & Deduplicate")
             
+            logger.info(f"Starting Step 5 with input: {step4_output}")
+            logger.info(f"Step 5 output directory: {output_dir}")
+            
             final_output = self._run_step5(step4_output, output_dir)
+            
+            logger.info(f"Step 5 final output: {final_output}")
             
             if progress_callback:
                 progress_callback.complete_step(5, "Filter & Deduplicate")
@@ -609,29 +614,52 @@ class StreamlitTSSPipeline:
             for path in [step4_output, output_dir]:
                 if not validate_path_security(path, self.temp_dir):
                     raise SecurityError(f"Path validation failed for {path}")
-                    
-            filter_dedup = step5_filter_deduplicate.DataFilter()
-            output_file = filter_dedup.process_file(str(step4_output))
             
-            # Move output to session output directory with validation
-            output_path = Path(output_file)
-            if not validate_path_security(output_path, Path.cwd()):
-                raise SecurityError(f"Generated output path validation failed: {output_path}")
-                
-            session_output = output_dir / output_path.name
+            # Create Step5 output directly in the session output directory
+            session_output_name = step4_output.name.replace(" - Step4.xlsx", " - Step5.xlsx")
+            if not session_output_name.endswith(" - Step5.xlsx"):
+                # Fallback if naming doesn't match expected pattern
+                session_output_name = step4_output.stem + " - Step5.xlsx"
+            
+            session_output = output_dir / session_output_name
             if not validate_path_security(session_output, self.temp_dir):
                 raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            logger.info(f"Step 5: Processing {step4_output} -> {session_output}")
+            
+            filter_dedup = step5_filter_deduplicate.DataFilter()
+            # Pass the target output path directly to avoid file movement
+            output_file = filter_dedup.process_file(str(step4_output), str(session_output))
+            
+            # Verify the output file was created successfully
+            output_path = Path(output_file)
+            if not output_path.exists():
+                raise TSConverterError(f"Step 5 output file was not created: {output_path}")
+            
+            # If the file was created in a different location, move it
+            if output_path != session_output:
+                if not validate_path_security(output_path, Path.cwd()):
+                    raise SecurityError(f"Generated output path validation failed: {output_path}")
                 
-            shutil.move(output_path, session_output)
-            session_output.chmod(0o600)  # Secure file permissions
+                logger.info(f"Moving Step 5 output from {output_path} to {session_output}")
+                shutil.move(output_path, session_output)
+            
+            # Set secure file permissions
+            session_output.chmod(0o600)
             
             # Extract processing statistics from logs or output
             self._extract_step5_stats(session_output)
             
+            logger.info(f"✅ Step 5 completed successfully: {session_output}")
             return session_output
+            
         except SecurityError:
             raise
+        except FileNotFoundError as e:
+            logger.error(f"Step 5 file not found: {e}")
+            raise TSConverterError(f"Step 5 failed - output file not found: {str(e)}")
         except Exception as e:
+            logger.error(f"Step 5 processing error: {e}")
             raise TSConverterError(f"Step 5 failed: {str(e)}")
     
     def _extract_step5_stats(self, output_file: Path):
