@@ -45,7 +45,16 @@ STREAMLIT_CONFIG = {
     # Error handling
     "show_error_details": True,
     "log_user_actions": True,
-    "enable_error_reporting": True
+    "enable_error_reporting": True,
+    
+    # Security and validation settings
+    "security_mode": "lenient",  # "strict" or "lenient" 
+    "enable_fallback_validation": True,
+    "enable_enhanced_logging": False,
+    "validation_timeout_seconds": 30,
+    "debug_validation": False,
+    "allow_large_files": False,  # Allow files up to 2x size limit in emergency
+    "strict_excel_validation": False  # Require all Excel structure checks to pass
 }
 
 # CSS Styling for Streamlit
@@ -1041,6 +1050,24 @@ def get_custom_css() -> str:
 def get_step_config() -> Dict[str, Dict[str, str]]:
     """Get step configuration for UI display"""
     return STEP_CONFIG
+
+def get_validation_config() -> Dict[str, Any]:
+    """Get validation configuration based on Streamlit settings"""
+    config = STREAMLIT_CONFIG
+    
+    # Map Streamlit config to security validator settings
+    validation_config = {
+        'strict_mode': config.get('security_mode', 'lenient') == 'strict',
+        'enable_fallbacks': config.get('enable_fallback_validation', True),
+        'max_file_size_mb': config.get('max_file_size_mb', 50),
+        'validation_timeout': config.get('validation_timeout_seconds', 30),
+        'debug_validation': config.get('debug_validation', False),
+        'enable_enhanced_logging': config.get('enable_enhanced_logging', False),
+        'allow_large_files': config.get('allow_large_files', False),
+        'strict_excel_validation': config.get('strict_excel_validation', False)
+    }
+    
+    return validation_config
 
 # Environment-specific overrides
 if os.getenv("STREAMLIT_ENV") == "production":

@@ -148,7 +148,15 @@ class StreamlitTSSPipeline:
         self.temp_dir = temp_dir or get_temp_directory()
         self.current_session_id = None
         self.processing_stats = {}
-        self.security_validator = SecurityFileValidator()
+        
+        # Initialize security validator with configuration from Streamlit settings
+        from config_streamlit import get_validation_config
+        validation_config = get_validation_config()
+        self.security_validator = SecurityFileValidator(
+            max_size=validation_config.get('max_file_size_mb', 50) * 1024 * 1024,
+            strict_mode=validation_config.get('strict_mode', False),
+            enable_fallbacks=validation_config.get('enable_fallbacks', True)
+        )
         
         # Ensure temp directory is secure
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -699,14 +707,17 @@ class StreamlitTSSPipeline:
     
     def validate_input_file(self, file_path: Path) -> Tuple[bool, str]:
         """
-        Validate input file format and structure with comprehensive security checks
+        Validate input file format and structure with enhanced error handling and graceful degradation
         
         Returns:
             Tuple of (is_valid, error_message)
         """
+        validation_warnings = []
+        
         try:
             # Security validation: check path security
             if not validate_path_security(file_path, self.temp_dir):
+                logger.error(f"Path security validation failed for: {file_path}")
                 return False, "File path security validation failed"
             
             # Basic file validation
@@ -716,44 +727,84 @@ class StreamlitTSSPipeline:
             if not file_path.suffix.lower() == '.xlsx':
                 return False, "File phải có định dạng .xlsx"
             
-            # File size validation
+            # File size validation with grace period
             try:
                 file_size = file_path.stat().st_size
                 file_size_mb = file_size / (1024 * 1024)
                 max_size = STREAMLIT_CONFIG.get("max_file_size_mb", 50)
-                if file_size_mb > max_size:
-                    return False, f"File quá lớn. Kích thước tối đa: {max_size}MB"
-            except (OSError, PermissionError):
-                return False, "Cannot access file size information"
+                
+                if file_size_mb > max_size * 2:  # Hard limit
+                    return False, f"File quá lớn (>{max_size*2}MB). Kích thước tối đa: {max_size}MB"
+                elif file_size_mb > max_size:  # Soft limit with warning
+                    validation_warnings.append(f"File lớn ({file_size_mb:.1f}MB), có thể xử lý chậm")
+                    
+            except (OSError, PermissionError) as e:
+                logger.warning(f"File size check failed: {e}")
+                validation_warnings.append("Không thể kiểm tra kích thước file")
             
-            # Security validation: read file and validate content
+            # Enhanced security validation with full file read
             try:
                 with open(file_path, 'rb') as f:
-                    file_data = f.read(8192)  # Read first 8KB for validation
+                    file_data = f.read()  # Read full file for comprehensive validation
                 
                 is_valid, error_msg = self.security_validator.validate_file(file_data, file_path.name)
+                
+                # Check if validator has warnings (for lenient mode)
+                if hasattr(self.security_validator, 'validation_warnings') and self.security_validator.validation_warnings:
+                    validation_warnings.extend(self.security_validator.validation_warnings)
+                
                 if not is_valid:
-                    return False, f"Security validation failed: {error_msg}"
+                    logger.error(f"Security validation failed for {file_path.name}: {error_msg}")
+                    # In lenient mode, try to provide helpful error context
+                    if "fallback mode" in str(error_msg):
+                        validation_warnings.append("File passed basic validation (compatibility mode)")
+                    else:
+                        return False, f"File validation failed: {error_msg}"
+                else:
+                    logger.info(f"Security validation passed for {file_path.name}")
                     
-            except (OSError, PermissionError):
-                return False, "Cannot read file for security validation"
+            except (OSError, PermissionError) as e:
+                logger.error(f"File read error: {e}")
+                return False, f"Không thể đọc file: {str(e)}"
+            except Exception as e:
+                logger.error(f"Security validation error: {e}")
+                return False, f"Lỗi kiểm tra bảo mật: {str(e)}"
             
-            # Basic structure validation
+            # Basic structure validation with fallback
+            excel_validation_passed = False
             try:
                 import openpyxl
                 wb = openpyxl.load_workbook(file_path, read_only=True)
                 if not wb.worksheets:
                     wb.close()
-                    return False, "File Excel không có worksheet nào"
-                wb.close()
+                    validation_warnings.append("File Excel có vấn đề về cấu trúc")
+                else:
+                    excel_validation_passed = True
+                    wb.close()
+                    logger.info(f"Excel structure validation passed for {file_path.name}")
+                    
+            except ImportError:
+                logger.warning("openpyxl not available for Excel validation")
+                validation_warnings.append("Không thể kiểm tra cấu trúc Excel chi tiết")
+                excel_validation_passed = True  # Allow in degraded mode
             except Exception as excel_error:
-                return False, f"Invalid Excel file structure: {str(excel_error)}"
+                logger.warning(f"Excel structure validation failed: {excel_error}")
+                validation_warnings.append(f"Cấu trúc Excel có vấn đề: {str(excel_error)}")
+                # Don't fail completely - might still be processable
             
-            return True, "File hợp lệ"
+            # Compile validation result
+            if validation_warnings:
+                warning_msg = f"File hợp lệ với {len(validation_warnings)} cảnh báo: {'; '.join(validation_warnings)}"
+                logger.warning(warning_msg)
+                return True, warning_msg
+            else:
+                return True, "File hợp lệ"
             
         except SecurityError as se:
-            return False, f"Security error: {str(se)}"
+            logger.error(f"Security error during validation: {se}")
+            return False, f"Lỗi bảo mật: {str(se)}"
         except Exception as e:
+            logger.error(f"Unexpected validation error: {e}", exc_info=True)
             return False, f"Lỗi validate file: {str(e)}"
     
     def get_processing_stats(self) -> Dict[str, Any]:

@@ -1,5 +1,12 @@
 name: Keep Streamlit App Alive
 
+# This workflow pings the Streamlit app every 4 hours to prevent it from sleeping
+# App URL: https://ngocson-tss.streamlit.app
+# Fixes applied:
+# - Uses correct app-specific Streamlit URL
+# - Improved error handling and diagnostics  
+# - Supports manual URL override via STREAMLIT_APP_URL secret
+
 on:
   schedule:
     # Run every 4 hours (conservative interval to respect ToS)
@@ -16,11 +23,15 @@ jobs:
       run: |
         echo "🔄 Pinging TSS Converter App to keep it alive..."
         
-        # Set app URL - replace with your actual Streamlit app URL
-        APP_URL="https://your-app-name.streamlit.app"
-        
-        # Add a comment with your actual URL or set it as a GitHub secret
-        # To use GitHub secret: APP_URL="${{ secrets.STREAMLIT_APP_URL }}"
+        # Set app URL - use GitHub secret if available, otherwise use inferred URL
+        if [ -n "${{ secrets.STREAMLIT_APP_URL }}" ]; then
+          APP_URL="${{ secrets.STREAMLIT_APP_URL }}"
+          echo "🔗 Using configured URL from secrets: $APP_URL"
+        else
+          # Use the known correct URL for this specific app
+          APP_URL="https://ngocson-tss.streamlit.app"
+          echo "🔗 Using app-specific URL: $APP_URL"
+        fi
         
         # Perform HTTP request with proper headers
         response=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -32,16 +43,35 @@ jobs:
           "$APP_URL")
         
         # Check response status
+        echo "📊 HTTP Response Code: $response"
+        
         if [ "$response" = "200" ]; then
-          echo "✅ App is alive! HTTP Status: $response"
+          echo "✅ App is alive and responding! HTTP Status: $response"
           echo "✅ Ping successful at $(date -u)"
         elif [ "$response" = "000" ]; then
           echo "❌ Failed to connect to app (timeout or network error)"
+          echo "🔍 This could mean:"
+          echo "   - App is not deployed yet"
+          echo "   - App URL is incorrect"
+          echo "   - Network connectivity issues"
+          echo "   - App is sleeping and taking too long to wake up"
           exit 1
-        else
+        elif [ "$response" = "404" ]; then
+          echo "❌ App not found (404) - URL might be incorrect"
+          echo "🔍 Expected URL: $APP_URL"
+          echo "   - Check if the app is deployed to Streamlit Cloud"
+          echo "   - Verify the repository name matches the app URL"
+          exit 1
+        elif [[ "$response" =~ ^[45][0-9][0-9]$ ]]; then
           echo "⚠️  App responded with HTTP Status: $response"
-          # Don't fail for 4xx/5xx as app might still be starting
-          echo "ℹ️  App might be starting up, this is normal for Streamlit"
+          echo "ℹ️  This might be temporary - app could be:"
+          echo "   - Starting up (normal for sleeping apps)"
+          echo "   - Experiencing temporary issues"
+          echo "   - Under maintenance"
+          echo "🔄 Not failing the job - will retry on next scheduled run"
+        else
+          echo "✅ App responded with HTTP Status: $response (acceptable)"
+          echo "ℹ️  App is responding, status $response is within normal range"
         fi
         
         echo "📊 Keep-alive ping completed at $(date -u)"
@@ -71,6 +101,6 @@ jobs:
       run: |
         echo "🚨 Keep-Alive Failed!"
         echo "The TSS Converter Streamlit app may be experiencing issues."
-        echo "Please check the app manually: https://your-app-name.streamlit.app"
+        echo "Please check the app manually: https://ngocson-tss.streamlit.app"
         echo "Time: $(date -u)"
         echo "This might be temporary - the app should auto-recover."
