@@ -143,7 +143,8 @@ def process_file_sync(file_data: bytes, filename: str):
                 )
             
             if output_file:
-                rm.add_temp_file(output_file)
+                # DO NOT add output_file to ResourceManager cleanup - we need to keep it!
+                # rm.add_temp_file(output_file)  # ← REMOVED: This was deleting our output file!
                 temp_files.append(output_file)
         
         if success:
