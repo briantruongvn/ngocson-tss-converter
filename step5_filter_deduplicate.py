@@ -4,6 +4,7 @@ Step 5: Filter and Deduplicate Data
 Removes NA rows and deduplicates SD rows with data cleaning.
 """
 
+import os
 import openpyxl
 from openpyxl.utils import get_column_letter
 import logging
@@ -274,26 +275,23 @@ class DataFilter:
                 logger.info(f"Creating output directory: {output_file.parent}")
                 output_file.parent.mkdir(parents=True, exist_ok=True)
         
-        # Validate output path is writable with enhanced error handling
+        # CRITICAL FIX: Always ensure output_file path is writable, no fallback for explicit paths
         try:
-            output_file = FileValidator.validate_output_writable(output_file)
+            # For explicitly provided paths, create the directory structure if needed
+            if output_file.parent != self.output_dir:
+                logger.info(f"Ensuring directory structure exists: {output_file.parent}")
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Simple writability check without FileValidator.validate_output_writable which may change path
+            if output_file.exists() and not os.access(output_file, os.W_OK):
+                raise TSConverterError(f"Output file is not writable: {output_file}")
+            if not os.access(output_file.parent, os.W_OK):
+                raise TSConverterError(f"Output directory is not writable: {output_file.parent}")
+                
             logger.info(f"Output path validation successful: {output_file}")
         except TSConverterError as e:
             logger.error(f"Output validation failed: {e}")
-            
-            # Fallback: try using the auto-generated path in self.output_dir
-            if output_file.parent != self.output_dir:
-                logger.info("Attempting fallback to auto-generated path...")
-                base_name = step4_path.stem.replace(" - Step4", "")
-                fallback_output = self.output_dir / f"{base_name} - Step5.xlsx"
-                try:
-                    output_file = FileValidator.validate_output_writable(fallback_output)
-                    logger.info(f"Using fallback output path: {output_file}")
-                except TSConverterError as fallback_error:
-                    logger.error(f"Fallback validation also failed: {fallback_error}")
-                    raise
-            else:
-                raise
+            raise
         
         logger.info(f"Input: {step4_path}")
         logger.info(f"Final output: {output_file}")
