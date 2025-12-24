@@ -201,52 +201,9 @@ class DataMapper:
         else:
             return ""
     
-    def safe_bulk_value(self, cell_value) -> str:
-        """
-        Safely extract value from bulk data (iter_rows values_only=True)
-        
-        Args:
-            cell_value: Raw cell value from iter_rows
-            
-        Returns:
-            Safe string value or empty string if error
-        """
-        if cell_value is None:
-            return ""
-        
-        if isinstance(cell_value, str):
-            # Check for Excel formula errors
-            formula_errors = ['#N/A', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?', '#NULL!', '#NUM!', '#ERROR!']
-            if any(error in cell_value for error in formula_errors):
-                return ""
-            return cell_value.strip()
-        
-        # Convert numbers and other types to string
-        return str(cell_value).strip()
-    
-    def combine_values(self, str1: str, str2: str) -> str:
-        """
-        Combine two string values with delimiter
-        
-        Args:
-            str1: First string value
-            str2: Second string value
-            
-        Returns:
-            Combined string with delimiter, or individual strings
-        """
-        if str1 and str2:
-            return f"{str1}-{str2}"
-        elif str1:
-            return str1
-        elif str2:
-            return str2
-        else:
-            return ""
-    
     def map_f_type_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
         """
-        Map data from F-type sheet (F-[Finished products]) - OPTIMIZED with bulk reading
+        Map data from F-type sheet (F-[Finished products])
         
         Args:
             source_ws: Source worksheet
@@ -260,60 +217,37 @@ class DataMapper:
         logger.info(f"Mapping F-type data from row {start_row}")
         current_target_row = target_start_row
         
-        # OPTIMIZATION: Bulk read all required columns at once
-        source_col_nums = {}
-        for source_col in self.f_type_mapping.keys():
-            if source_col == 'KL':
-                source_col_nums['K'] = openpyxl.utils.column_index_from_string('K')
-                source_col_nums['L'] = openpyxl.utils.column_index_from_string('L')
-            else:
-                source_col_nums[source_col] = openpyxl.utils.column_index_from_string(source_col)
-        
-        all_cols = list(source_col_nums.values())
-        min_col, max_col = min(all_cols), max(all_cols)
-        
-        # Bulk read data with iter_rows
-        bulk_data = []
-        for row in source_ws.iter_rows(
-            min_row=start_row,
-            max_row=source_ws.max_row,
-            min_col=min_col,
-            max_col=max_col,
-            values_only=True
-        ):
-            bulk_data.append(row)
-        
-        # Process bulk data efficiently
-        for i, row_data in enumerate(bulk_data):
-            source_row = start_row + i
+        # Process each row until empty
+        for source_row in range(start_row, source_ws.max_row + 1):
+            # Check if row has any data using safe cell reading
+            has_data = False
+            for col in range(1, source_ws.max_column + 1):
+                cell_value = self.safe_cell_value(source_ws.cell(source_row, col))
+                if cell_value:
+                    has_data = True
+                    break
             
-            # Check if row has any data
-            has_data = any(cell for cell in row_data if cell is not None and str(cell).strip())
             if not has_data:
                 logger.debug(f"Stopping at empty row {source_row}")
                 break
             
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
-            # Apply column mappings using bulk data
+            # Apply column mappings
             for source_col, target_col in self.f_type_mapping.items():
                 if source_col == 'KL':  # Special case: combine K & L
-                    k_idx = source_col_nums['K'] - min_col
-                    l_idx = source_col_nums['L'] - min_col
-                    k_val = self.safe_bulk_value(row_data[k_idx] if k_idx < len(row_data) else None)
-                    l_val = self.safe_bulk_value(row_data[l_idx] if l_idx < len(row_data) else None)
-                    combined_value = self.combine_values(k_val, l_val)
-                    
+                    combined_value = self.combine_columns(source_ws, source_row, 'K', 'L')
                     target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     target_ws.cell(current_target_row, target_col_num, combined_value)
                     logger.debug(f"Combined K&L -> {target_col}: '{combined_value}'")
                 else:
                     # Single column mapping
-                    col_idx = source_col_nums[source_col] - min_col
-                    source_value = self.safe_bulk_value(row_data[col_idx] if col_idx < len(row_data) else None)
+                    source_col_num = openpyxl.utils.column_index_from_string(source_col)
+                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     
+                    source_cell = source_ws.cell(source_row, source_col_num)
+                    source_value = self.safe_cell_value(source_cell)
                     if source_value:
-                        target_col_num = openpyxl.utils.column_index_from_string(target_col)
                         target_ws.cell(current_target_row, target_col_num, source_value)
                         logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
             
@@ -325,7 +259,7 @@ class DataMapper:
     
     def map_m_type_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
         """
-        Map data from M-type sheet (M-[Material type]) - OPTIMIZED with bulk reading
+        Map data from M-type sheet (M-[Material type])
         
         Args:
             source_ws: Source worksheet
@@ -339,60 +273,37 @@ class DataMapper:
         logger.info(f"Mapping M-type data from row {start_row}")
         current_target_row = target_start_row
         
-        # OPTIMIZATION: Bulk read all required columns at once
-        source_col_nums = {}
-        for source_col in self.m_type_mapping.keys():
-            if source_col == 'NO':
-                source_col_nums['N'] = openpyxl.utils.column_index_from_string('N')
-                source_col_nums['O'] = openpyxl.utils.column_index_from_string('O')
-            else:
-                source_col_nums[source_col] = openpyxl.utils.column_index_from_string(source_col)
-        
-        all_cols = list(source_col_nums.values())
-        min_col, max_col = min(all_cols), max(all_cols)
-        
-        # Bulk read data with iter_rows
-        bulk_data = []
-        for row in source_ws.iter_rows(
-            min_row=start_row,
-            max_row=source_ws.max_row,
-            min_col=min_col,
-            max_col=max_col,
-            values_only=True
-        ):
-            bulk_data.append(row)
-        
-        # Process bulk data efficiently
-        for i, row_data in enumerate(bulk_data):
-            source_row = start_row + i
+        # Process each row until empty
+        for source_row in range(start_row, source_ws.max_row + 1):
+            # Check if row has any data using safe cell reading
+            has_data = False
+            for col in range(1, source_ws.max_column + 1):
+                cell_value = self.safe_cell_value(source_ws.cell(source_row, col))
+                if cell_value:
+                    has_data = True
+                    break
             
-            # Check if row has any data
-            has_data = any(cell for cell in row_data if cell is not None and str(cell).strip())
             if not has_data:
                 logger.debug(f"Stopping at empty row {source_row}")
                 break
             
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
-            # Apply column mappings using bulk data
+            # Apply column mappings
             for source_col, target_col in self.m_type_mapping.items():
                 if source_col == 'NO':  # Special case: combine N & O
-                    n_idx = source_col_nums['N'] - min_col
-                    o_idx = source_col_nums['O'] - min_col
-                    n_val = self.safe_bulk_value(row_data[n_idx] if n_idx < len(row_data) else None)
-                    o_val = self.safe_bulk_value(row_data[o_idx] if o_idx < len(row_data) else None)
-                    combined_value = self.combine_values(n_val, o_val)
-                    
+                    combined_value = self.combine_columns(source_ws, source_row, 'N', 'O')
                     target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     target_ws.cell(current_target_row, target_col_num, combined_value)
                     logger.debug(f"Combined N&O -> {target_col}: '{combined_value}'")
                 else:
                     # Single column mapping
-                    col_idx = source_col_nums[source_col] - min_col
-                    source_value = self.safe_bulk_value(row_data[col_idx] if col_idx < len(row_data) else None)
+                    source_col_num = openpyxl.utils.column_index_from_string(source_col)
+                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     
+                    source_cell = source_ws.cell(source_row, source_col_num)
+                    source_value = self.safe_cell_value(source_cell)
                     if source_value:
-                        target_col_num = openpyxl.utils.column_index_from_string(target_col)
                         target_ws.cell(current_target_row, target_col_num, source_value)
                         logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
             
@@ -404,7 +315,7 @@ class DataMapper:
         
     def map_c_type_data(self, source_ws, target_ws, start_row: int, target_start_row: int) -> int:
         """
-        Map data from C-type sheet (C-[Component type]) - OPTIMIZED with bulk reading
+        Map data from C-type sheet (C-[Component type])
         
         Args:
             source_ws: Source worksheet
@@ -418,60 +329,37 @@ class DataMapper:
         logger.info(f"Mapping C-type data from row {start_row}")
         current_target_row = target_start_row
         
-        # OPTIMIZATION: Bulk read all required columns at once
-        source_col_nums = {}
-        for source_col in self.c_type_mapping.keys():
-            if source_col == 'MN':
-                source_col_nums['M'] = openpyxl.utils.column_index_from_string('M')
-                source_col_nums['N'] = openpyxl.utils.column_index_from_string('N')
-            else:
-                source_col_nums[source_col] = openpyxl.utils.column_index_from_string(source_col)
-        
-        all_cols = list(source_col_nums.values())
-        min_col, max_col = min(all_cols), max(all_cols)
-        
-        # Bulk read data with iter_rows
-        bulk_data = []
-        for row in source_ws.iter_rows(
-            min_row=start_row,
-            max_row=source_ws.max_row,
-            min_col=min_col,
-            max_col=max_col,
-            values_only=True
-        ):
-            bulk_data.append(row)
-        
-        # Process bulk data efficiently
-        for i, row_data in enumerate(bulk_data):
-            source_row = start_row + i
+        # Process each row until empty
+        for source_row in range(start_row, source_ws.max_row + 1):
+            # Check if row has any data using safe cell reading
+            has_data = False
+            for col in range(1, source_ws.max_column + 1):
+                cell_value = self.safe_cell_value(source_ws.cell(source_row, col))
+                if cell_value:
+                    has_data = True
+                    break
             
-            # Check if row has any data
-            has_data = any(cell for cell in row_data if cell is not None and str(cell).strip())
             if not has_data:
                 logger.debug(f"Stopping at empty row {source_row}")
                 break
             
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
-            # Apply column mappings using bulk data
+            # Apply column mappings
             for source_col, target_col in self.c_type_mapping.items():
                 if source_col == 'MN':  # Special case: combine M & N
-                    m_idx = source_col_nums['M'] - min_col
-                    n_idx = source_col_nums['N'] - min_col
-                    m_val = self.safe_bulk_value(row_data[m_idx] if m_idx < len(row_data) else None)
-                    n_val = self.safe_bulk_value(row_data[n_idx] if n_idx < len(row_data) else None)
-                    combined_value = self.combine_values(m_val, n_val)
-                    
+                    combined_value = self.combine_columns(source_ws, source_row, 'M', 'N')
                     target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     target_ws.cell(current_target_row, target_col_num, combined_value)
                     logger.debug(f"Combined M&N -> {target_col}: '{combined_value}'")
                 else:
                     # Single column mapping
-                    col_idx = source_col_nums[source_col] - min_col
-                    source_value = self.safe_bulk_value(row_data[col_idx] if col_idx < len(row_data) else None)
+                    source_col_num = openpyxl.utils.column_index_from_string(source_col)
+                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
                     
+                    source_cell = source_ws.cell(source_row, source_col_num)
+                    source_value = self.safe_cell_value(source_cell)
                     if source_value:
-                        target_col_num = openpyxl.utils.column_index_from_string(target_col)
                         target_ws.cell(current_target_row, target_col_num, source_value)
                         logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
             

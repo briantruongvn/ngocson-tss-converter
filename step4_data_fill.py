@@ -69,7 +69,7 @@ class DataFiller:
     
     def fill_column(self, worksheet, column_letter: str, start_row: int, end_row: int) -> int:
         """
-        Fill empty cells in a column with data from the cell above - OPTIMIZED with bulk reading
+        Fill empty cells in a column with data from the cell above
         
         Args:
             worksheet: openpyxl worksheet object
@@ -85,48 +85,38 @@ class DataFiller:
         
         logger.info(f"Filling column {column_letter} from row {start_row} to {end_row}")
         
-        # OPTIMIZATION: Bulk read entire column at once
-        column_values = []
-        for row in worksheet.iter_rows(
-            min_row=start_row,
-            max_row=end_row,
-            min_col=col_num,
-            max_col=col_num,
-            values_only=True
-        ):
-            column_values.append(row[0])
-        
-        # Process values efficiently with forward fill logic
-        last_valid_value = None
-        updates = []  # Store (row_index, new_value) pairs for batch update
-        
-        for i, current_value in enumerate(column_values):
-            row_num = start_row + i
+        # Process each row from start to end
+        for row in range(start_row, end_row + 1):
+            current_cell = worksheet.cell(row, col_num)
+            current_value = current_cell.value
             
             # Check if current cell is empty
             is_empty = (current_value is None or 
                        (isinstance(current_value, str) and current_value.strip() == ""))
             
-            if is_empty and last_valid_value is not None:
-                # Fill with last valid value
-                updates.append((row_num, last_valid_value))
-                filled_count += 1
-                logger.debug(f"Will fill {column_letter}{row_num} with '{last_valid_value}'")
+            if is_empty and row > start_row:
+                # Get value from cell above
+                above_cell = worksheet.cell(row - 1, col_num)
+                above_value = above_cell.value
+                
+                if above_value is not None:
+                    # Fill current cell with value from above
+                    current_cell.value = above_value
+                    filled_count += 1
+                    logger.debug(f"Filled {column_letter}{row} with '{above_value}' from {column_letter}{row-1}")
+                else:
+                    logger.debug(f"Keeping {column_letter}{row} empty (no value above)")
             elif not is_empty:
-                # Update last valid value
-                last_valid_value = current_value
-                logger.debug(f"Keeping {column_letter}{row_num} = '{current_value}' (has data)")
-        
-        # OPTIMIZATION: Batch update all cells at once
-        for row_num, new_value in updates:
-            worksheet.cell(row_num, col_num).value = new_value
+                logger.debug(f"Keeping {column_letter}{row} = '{current_value}' (has data)")
+            else:
+                logger.debug(f"Keeping {column_letter}{row} empty (first row or no data above)")
         
         logger.info(f"Column {column_letter}: filled {filled_count} cells")
         return filled_count
     
     def process_columns(self, worksheet) -> dict:
         """
-        Process all target columns (D, E, F) and fill empty cells - OPTIMIZED with bulk operations
+        Process all target columns (D, E, F) and fill empty cells
         
         Args:
             worksheet: openpyxl worksheet object
@@ -144,89 +134,14 @@ class DataFiller:
         results = {}
         total_filled = 0
         
-        # OPTIMIZATION: Bulk read all target columns at once
-        logger.info(f"Processing columns {self.target_columns} with bulk operations")
-        
-        col_nums = [openpyxl.utils.column_index_from_string(col) for col in self.target_columns]
-        min_col, max_col = min(col_nums), max(col_nums)
-        
-        # Bulk read all target columns data
-        all_data = []
-        for row in worksheet.iter_rows(
-            min_row=self.start_row,
-            max_row=last_row,
-            min_col=min_col,
-            max_col=max_col,
-            values_only=True
-        ):
-            all_data.append(row)
-        
-        # Process each column efficiently using bulk data
-        for i, column_letter in enumerate(self.target_columns):
-            col_idx = col_nums[i] - min_col  # Adjust for bulk data index
-            filled_count = self.fill_column_from_bulk(worksheet, column_letter, 
-                                                    all_data, col_idx, min_col)
+        # Process each target column
+        for column_letter in self.target_columns:
+            filled_count = self.fill_column(worksheet, column_letter, self.start_row, last_row)
             results[column_letter] = filled_count
             total_filled += filled_count
         
         logger.info(f"Total cells filled: {total_filled}")
         return results
-    
-    def fill_column_from_bulk(self, worksheet, column_letter: str, all_data: list, 
-                            col_idx: int, min_col: int) -> int:
-        """
-        Fill column using pre-read bulk data - OPTIMIZED version
-        
-        Args:
-            worksheet: openpyxl worksheet object
-            column_letter: Column letter (D, E, F)
-            all_data: Bulk data from iter_rows
-            col_idx: Column index in bulk data
-            min_col: Minimum column number for offset calculation
-            
-        Returns:
-            Number of cells filled
-        """
-        col_num = openpyxl.utils.column_index_from_string(column_letter)
-        filled_count = 0
-        
-        logger.info(f"Filling column {column_letter} using bulk data")
-        
-        # Extract column values from bulk data
-        column_values = []
-        for row_data in all_data:
-            if col_idx < len(row_data):
-                column_values.append(row_data[col_idx])
-            else:
-                column_values.append(None)
-        
-        # Process values efficiently with forward fill logic
-        last_valid_value = None
-        updates = []  # Store (row_index, new_value) pairs for batch update
-        
-        for i, current_value in enumerate(column_values):
-            row_num = self.start_row + i
-            
-            # Check if current cell is empty
-            is_empty = (current_value is None or 
-                       (isinstance(current_value, str) and current_value.strip() == ""))
-            
-            if is_empty and last_valid_value is not None:
-                # Fill with last valid value
-                updates.append((row_num, last_valid_value))
-                filled_count += 1
-                logger.debug(f"Will fill {column_letter}{row_num} with '{last_valid_value}'")
-            elif not is_empty:
-                # Update last valid value
-                last_valid_value = current_value
-                logger.debug(f"Keeping {column_letter}{row_num} = '{current_value}' (has data)")
-        
-        # OPTIMIZATION: Batch update all cells at once
-        for row_num, new_value in updates:
-            worksheet.cell(row_num, col_num).value = new_value
-        
-        logger.info(f"Column {column_letter}: filled {filled_count} cells")
-        return filled_count
     
     def process_file(self, step3_file: Union[str, Path],
                     output_file: Optional[Union[str, Path]] = None) -> str:
