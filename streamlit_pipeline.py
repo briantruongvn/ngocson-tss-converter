@@ -150,9 +150,6 @@ class StreamlitTSSPipeline:
         self.current_session_id = None
         self.processing_stats = {}
         
-        # OPTIMIZATION: Workbook cache for reusing loaded files
-        self.workbook_cache = {}
-        
         # Initialize security validator with configuration from Streamlit settings
         from config_streamlit import get_validation_config
         validation_config = get_validation_config()
@@ -167,43 +164,6 @@ class StreamlitTSSPipeline:
         
         # Initialize session manager
         session_manager.initialize_session_state()
-    
-    def get_cached_workbook(self, file_path: Path, read_only: bool = False) -> 'openpyxl.Workbook':
-        """
-        OPTIMIZATION: Get workbook from cache or load and cache it
-        
-        Args:
-            file_path: Path to Excel file
-            read_only: Whether to load in read-only mode
-            
-        Returns:
-            Cached or newly loaded workbook
-        """
-        cache_key = f"{file_path}_{read_only}"
-        
-        if cache_key not in self.workbook_cache:
-            logger.info(f"📚 Loading workbook into cache: {file_path.name} (read_only={read_only})")
-            import openpyxl
-            wb = openpyxl.load_workbook(str(file_path), read_only=read_only, data_only=True)
-            self.workbook_cache[cache_key] = wb
-        else:
-            logger.info(f"📚 Using cached workbook: {file_path.name} (read_only={read_only})")
-            
-        return self.workbook_cache[cache_key]
-    
-    def clear_workbook_cache(self):
-        """
-        OPTIMIZATION: Clear workbook cache and close all workbooks
-        """
-        for cache_key, wb in self.workbook_cache.items():
-            try:
-                wb.close()
-                logger.debug(f"📚 Closed cached workbook: {cache_key}")
-            except Exception as e:
-                logger.warning(f"Error closing cached workbook {cache_key}: {e}")
-        
-        self.workbook_cache.clear()
-        logger.info("📚 Workbook cache cleared")
         
     def create_session_directory(self) -> Path:
         """Create unique session directory for file processing with security validation"""

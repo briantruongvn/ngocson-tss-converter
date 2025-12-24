@@ -89,8 +89,8 @@ class DataExtractor:
         
         try:
             # Search through all cells in the worksheet (with limits)
-            for row_num in range(1, min(worksheet.max_row + 1, 20)):  # Optimized: first 20 rows only
-                for col_num in range(1, min(worksheet.max_column + 1, 20)):  # Optimized: first 20 columns only
+            for row_num in range(1, min(worksheet.max_row + 1, 100)):  # Limit to first 100 rows
+                for col_num in range(1, min(worksheet.max_column + 1, 50)):  # Limit to first 50 columns
                     cells_checked += 1
                     if cells_checked > max_cells:
                         logger.warning(f"Header search timeout in {worksheet.title}: checked {cells_checked} cells")
@@ -189,42 +189,6 @@ class DataExtractor:
         
         return cleaned
     
-    def safe_cell_value_from_raw(self, value) -> str:
-        """
-        OPTIMIZATION: Safe cell value processing from raw value (for bulk reading)
-        
-        Args:
-            value: Raw cell value from iter_rows
-            
-        Returns:
-            Safe string value or empty string if error
-        """
-        try:
-            if value is None:
-                return ""
-            
-            # Check for Excel formula errors
-            if isinstance(value, str):
-                formula_errors = ['#N/A', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?', '#NULL!', '#NUM!', '#ERROR!']
-                if any(error in str(value) for error in formula_errors):
-                    return ""
-            
-            # Handle numeric values
-            if isinstance(value, (int, float)):
-                return str(value)
-            
-            # Handle datetime values  
-            from datetime import datetime
-            if isinstance(value, datetime):
-                return str(value)
-            
-            # Handle string values
-            return str(value).strip()
-            
-        except Exception as e:
-            logger.error(f"Exception in safe_cell_value_from_raw: {e}")
-            return ""
-    
     def parse_multi_value_cell(self, value: str) -> List[str]:
         """
         Parse cell value that may contain multiple items separated by delimiters
@@ -276,36 +240,23 @@ class DataExtractor:
         hidden_rows_skipped = 0
         
         try:
-            # OPTIMIZATION: Use bulk reading instead of cell-by-cell access
-            end_row = min(start_row + max_rows, worksheet.max_row)
-            
-            # Read entire column range at once (much faster than individual cell access)
-            column_values = []
-            for row in worksheet.iter_rows(
-                min_row=start_row + 1, 
-                max_row=end_row,
-                min_col=start_col, 
-                max_col=start_col, 
-                values_only=True
-            ):
-                column_values.append(row[0])  # Get value from the single column
-            
-            # Process bulk data efficiently
-            for row_idx, raw_value in enumerate(column_values):
-                current_row = start_row + 1 + row_idx
-                
-                # Skip hidden cells (check only when necessary)
+            while rows_checked < max_rows:
+                # Skip hidden cells
                 if self.is_cell_hidden(worksheet, current_row, start_col):
                     hidden_rows_skipped += 1
                     logger.debug(f"Skipping hidden cell {worksheet.title}!{current_row},{start_col}")
+                    current_row += 1
+                    rows_checked += 1
                     continue
                 
-                # Process cell value safely using optimized method
-                value = self.safe_cell_value_from_raw(raw_value)
+                cell = worksheet.cell(row=current_row, column=start_col)
+                
+                # Use safe cell reading to handle formula errors
+                value = self.safe_cell_value(cell)
                 
                 # Check if we've reached end of data
                 if not value:
-                    logger.debug(f"Stopping extraction at {worksheet.title}!{current_row},{start_col}: empty cell")
+                    logger.debug(f"Stopping extraction at {worksheet.title}!{cell.coordinate}: empty cell")
                     break
                 
                 if value:
@@ -313,13 +264,21 @@ class DataExtractor:
                     try:
                         parsed_values = self.parse_multi_value_cell(value)
                         data.extend(parsed_values)
-                        logger.debug(f"Extracted from {worksheet.title}!{current_row},{start_col}: {len(parsed_values)} items: {parsed_values}")
+                        logger.debug(f"Extracted from {worksheet.title}!{cell.coordinate}: {len(parsed_values)} items: {parsed_values}")
                     except Exception as parse_error:
-                        logger.warning(f"Error parsing cell {worksheet.title}!{current_row},{start_col}: {parse_error}")
+                        logger.warning(f"Error parsing cell {worksheet.title}!{cell.coordinate}: {parse_error}")
                         # Continue with raw value
                         cleaned_value = self.clean_value(value)
                         if cleaned_value:
                             data.append(cleaned_value)
+                
+                current_row += 1
+                rows_checked += 1
+                
+                # Check if we're going beyond reasonable worksheet bounds
+                if current_row > worksheet.max_row + 100:
+                    logger.warning(f"Stopping extraction: exceeded max_row + 100 at row {current_row}")
+                    break
                     
         except Exception as e:
             logger.error(f"Error during data extraction at {worksheet.title}!{current_row},{start_col}: {e}")
@@ -434,8 +393,8 @@ class DataExtractor:
         step1_wb = openpyxl.load_workbook(str(step1_path))
         step1_ws = step1_wb.active
         
-        # Load source file for data extraction (read_only for faster loading)
-        source_wb = openpyxl.load_workbook(str(source_path), read_only=True)
+        # Load source file for data extraction
+        source_wb = openpyxl.load_workbook(str(source_path))
         
         all_names = []
         all_numbers = []
@@ -617,8 +576,8 @@ class DataExtractor:
         step1_wb = openpyxl.load_workbook(str(step1_path))
         step1_ws = step1_wb.active
         
-        # Load source file for data extraction (read_only for faster loading)
-        source_wb = openpyxl.load_workbook(str(source_path), read_only=True)
+        # Load source file for data extraction
+        source_wb = openpyxl.load_workbook(str(source_path))
         
         all_names = []
         all_numbers = []

@@ -182,11 +182,12 @@ class DataFiller:
         logger.info(f"Input: {step3_path}")
         logger.info(f"Output: {output_file}")
         
-        # OPTIMIZATION: Load Step3 file directly instead of copying
-        logger.info("Loading Step3 file directly (no file copy)")
+        # Copy Step3 file as starting point
+        shutil.copy2(str(step3_path), str(output_file))
+        logger.info("Copied Step3 file as base")
         
-        # Load Step3 workbook
-        wb = openpyxl.load_workbook(str(step3_path))
+        # Load workbook
+        wb = openpyxl.load_workbook(str(output_file))
         ws = wb.active
         
         # Process columns

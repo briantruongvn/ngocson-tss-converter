@@ -12,7 +12,6 @@ from typing import Union, Optional, List, Tuple, Dict
 import argparse
 import sys
 import shutil
-from copy import copy
 
 from common.validation import validate_step3_input, FileValidator
 from common.exceptions import TSConverterError
@@ -118,7 +117,7 @@ class DataMapper:
         Returns:
             Row number (1-based) or None if not found
         """
-        for row in range(1, min(worksheet.max_row + 1, 20)):  # Optimized: search first 20 rows only
+        for row in range(1, min(worksheet.max_row + 1, 50)):  # Search first 50 rows
             for col in range(1, worksheet.max_column + 1):
                 cell = worksheet.cell(row, col)
                 cell_value = self.safe_cell_value(cell)
@@ -413,35 +412,13 @@ class DataMapper:
         logger.info(f"Step2 Template: {step2_path}")
         logger.info(f"Output: {output_file}")
         
-        # OPTIMIZATION: Load Step2 template directly instead of copying file
-        logger.info("Loading Step2 template directly (no file copy)")
+        # Copy Step2 file as starting point
+        shutil.copy2(str(step2_path), str(output_file))
+        logger.info("Copied Step2 template as base")
         
-        # Load workbooks (source as read_only for performance, step2 for copying structure)
-        source_wb = openpyxl.load_workbook(str(source_path), read_only=True)
-        step2_wb = openpyxl.load_workbook(str(step2_path), read_only=True)
-        
-        # Create new workbook with Step2 structure (in-memory copy)
-        target_wb = openpyxl.Workbook()
-        target_ws = target_wb.active
-        step2_ws = step2_wb.active
-        
-        # Copy Step2 data to new workbook (in-memory, much faster)
-        for row_idx, row in enumerate(step2_ws.iter_rows(values_only=True), 1):
-            for col_idx, value in enumerate(row, 1):
-                if value is not None:
-                    target_ws.cell(row_idx, col_idx, value)
-        
-        # Copy formatting from Step2 (basic cell styles)
-        for row_idx in range(1, min(step2_ws.max_row + 1, 10)):  # Only copy first 10 rows formatting
-            for col_idx in range(1, step2_ws.max_column + 1):
-                source_cell = step2_ws.cell(row_idx, col_idx)
-                target_cell = target_ws.cell(row_idx, col_idx)
-                if hasattr(source_cell, 'font'):
-                    target_cell.font = copy(source_cell.font)
-                if hasattr(source_cell, 'fill'):
-                    target_cell.fill = copy(source_cell.fill)
-        
-        step2_wb.close()  # Close source workbook to free memory
+        # Load workbooks
+        source_wb = openpyxl.load_workbook(str(source_path))
+        target_wb = openpyxl.load_workbook(str(output_file))
         target_ws = target_wb.active
         
         # Find next available row in target (after existing data)
