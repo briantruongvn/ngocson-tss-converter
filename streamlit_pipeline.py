@@ -625,56 +625,120 @@ class StreamlitTSSPipeline:
             if not validate_path_security(session_output, self.temp_dir):
                 raise SecurityError(f"Session output path validation failed: {session_output}")
             
-            logger.info(f"Step 5: Processing {step4_output} -> {session_output}")
+            logger.info(f"🚀 STEP 5 START: Processing {step4_output} -> {session_output}")
             
-            # DIRECT FIX: Ensure the session output directory exists and initialize DataFilter properly
-            logger.info(f"Ensuring output directory exists: {output_dir}")
+            # DETAILED LOGGING: Check initial state
+            logger.info(f"📁 Current working directory: {Path.cwd()}")
+            logger.info(f"📁 Step4 input file exists: {step4_output.exists()}")
+            logger.info(f"📁 Step4 input file size: {step4_output.stat().st_size if step4_output.exists() else 'N/A'}")
+            logger.info(f"📁 Session output directory exists: {output_dir.exists()}")
+            logger.info(f"📁 Target session output path: {session_output}")
+            logger.info(f"📁 Target session output parent exists: {session_output.parent.exists()}")
+            
+            # DIRECT FIX: Ensure the session output directory exists
+            logger.info(f"📂 Ensuring output directory exists: {output_dir}")
             output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"📂 Output directory created/verified: {output_dir.exists()}")
             
-            # Initialize DataFilter - don't pass base_dir, let it use its own output management
+            # Initialize DataFilter
+            logger.info(f"🔧 Initializing DataFilter...")
             filter_dedup = step5_filter_deduplicate.DataFilter()
-            logger.info(f"DataFilter output directory: {filter_dedup.output_dir}")
+            logger.info(f"🔧 DataFilter initialized:")
+            logger.info(f"   - DataFilter.base_dir: {filter_dedup.base_dir}")
+            logger.info(f"   - DataFilter.output_dir: {filter_dedup.output_dir}")
+            logger.info(f"   - DataFilter.output_dir exists: {Path(filter_dedup.output_dir).exists()}")
             
             try:
                 # CRITICAL: Pass the explicit session output path to process_file
-                logger.info(f"Calling DataFilter.process_file with:")
-                logger.info(f"  Input: {step4_output}")
-                logger.info(f"  Output: {session_output}")
+                logger.info(f"📞 Calling DataFilter.process_file with:")
+                logger.info(f"   📥 Input file: {step4_output}")
+                logger.info(f"   📤 Output file: {session_output}")
+                logger.info(f"   📥 Input exists: {step4_output.exists()}")
+                logger.info(f"   📤 Output parent exists: {session_output.parent.exists()}")
+                
+                # PRE-CALL DIRECTORY SNAPSHOT
+                logger.info(f"📷 PRE-CALL: Session output directory contents:")
+                if output_dir.exists():
+                    for item in output_dir.iterdir():
+                        logger.info(f"     - {item} ({'file' if item.is_file() else 'dir'})")
+                else:
+                    logger.info(f"     - Directory does not exist")
                 
                 # This should create the file directly at session_output location
+                logger.info(f"⚡ CALLING DataFilter.process_file...")
                 result_file = filter_dedup.process_file(str(step4_output), str(session_output))
-                logger.info(f"DataFilter returned: {result_file}")
+                logger.info(f"✅ DataFilter.process_file completed successfully!")
+                logger.info(f"📝 DataFilter returned path: {result_file}")
+                
+                # POST-CALL DIRECTORY SNAPSHOT
+                logger.info(f"📷 POST-CALL: Session output directory contents:")
+                if output_dir.exists():
+                    for item in output_dir.iterdir():
+                        logger.info(f"     - {item} ({'file' if item.is_file() else 'dir'}, size: {item.stat().st_size if item.is_file() else 'N/A'})")
+                else:
+                    logger.info(f"     - Directory does not exist")
                 
                 # Convert result to Path and verify
                 result_path = Path(result_file)
+                logger.info(f"🔍 Verifying result file:")
+                logger.info(f"   - Result path: {result_path}")
+                logger.info(f"   - Result absolute path: {result_path.absolute()}")
+                logger.info(f"   - File exists: {result_path.exists()}")
+                logger.info(f"   - Parent directory: {result_path.parent}")
+                logger.info(f"   - Parent exists: {result_path.parent.exists()}")
+                
                 if result_path.exists():
+                    file_size = result_path.stat().st_size
                     logger.info(f"✅ Step 5 output verified at: {result_path}")
+                    logger.info(f"   - File size: {file_size} bytes")
+                    logger.info(f"   - Setting file permissions...")
                     result_path.chmod(0o600)
+                    logger.info(f"   - Extracting statistics...")
                     self._extract_step5_stats(result_path)
+                    logger.info(f"🎉 Step 5 completed successfully: {result_path}")
                     return result_path
                 else:
+                    # COMPREHENSIVE DEBUGGING ON FAILURE
+                    logger.error(f"❌ DataFilter claimed success but file not found!")
+                    logger.error(f"   - Expected path: {result_path}")
+                    logger.error(f"   - Absolute path: {result_path.absolute()}")
+                    
+                    # Check all possible locations
+                    logger.info(f"🔍 SEARCHING ALL LOCATIONS:")
+                    
+                    # 1. Current working directory
+                    logger.info(f"📁 Current working directory: {Path.cwd()}")
+                    for item in Path.cwd().iterdir():
+                        if "Step5" in str(item):
+                            logger.info(f"   - Found Step5 item: {item}")
+                    
+                    # 2. DataFilter output directory
+                    filter_output_dir = Path(filter_dedup.output_dir)
+                    logger.info(f"📁 DataFilter output directory: {filter_output_dir}")
+                    if filter_output_dir.exists():
+                        for item in filter_output_dir.iterdir():
+                            logger.info(f"   - Found item: {item}")
+                    
+                    # 3. Session directory tree
+                    session_dir = output_dir.parent
+                    logger.info(f"📁 Session directory tree: {session_dir}")
+                    if session_dir.exists():
+                        for root, dirs, files in os.walk(session_dir):
+                            for file in files:
+                                file_path = Path(root) / file
+                                logger.info(f"   - Found file: {file_path}")
+                    
                     raise TSConverterError(f"DataFilter claimed success but file not found: {result_path}")
                     
             except Exception as e:
-                logger.error(f"DataFilter processing failed: {e}")
-                logger.error(f"Exception type: {type(e).__name__}")
+                logger.error(f"❌ DataFilter processing failed!")
+                logger.error(f"   - Exception: {e}")
+                logger.error(f"   - Exception type: {type(e).__name__}")
+                logger.error(f"   - Exception args: {e.args}")
                 
-                # Log current directory contents for debugging
-                logger.info("Debugging - Current working directory contents:")
-                for item in Path.cwd().iterdir():
-                    if item.is_file() and "Step5" in item.name:
-                        logger.info(f"  Found Step5 file: {item}")
-                
-                logger.info(f"Debugging - DataFilter output directory contents:")
-                if Path(filter_dedup.output_dir).exists():
-                    for item in Path(filter_dedup.output_dir).iterdir():
-                        if item.is_file() and "Step5" in item.name:
-                            logger.info(f"  Found Step5 file: {item}")
-                
-                logger.info(f"Debugging - Session output directory contents:")
-                if output_dir.exists():
-                    for item in output_dir.iterdir():
-                        logger.info(f"  Found file: {item}")
+                # Import traceback for full stack trace
+                import traceback
+                logger.error(f"   - Full traceback:\n{traceback.format_exc()}")
                 
                 raise TSConverterError(f"Step 5 processing failed: {str(e)}")
             

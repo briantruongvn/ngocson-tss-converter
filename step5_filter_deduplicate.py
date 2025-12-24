@@ -251,65 +251,116 @@ class DataFilter:
         Returns:
             Path to output file
         """
-        logger.info("📋 Step 5: Filter and Deduplicate")
+        logger.info("📋 DATAFILTER: Step 5 Filter and Deduplicate START")
+        
+        # DETAILED LOGGING: Initial state
+        logger.info(f"🔧 DATAFILTER: DataFilter instance state:")
+        logger.info(f"   - base_dir: {self.base_dir}")
+        logger.info(f"   - output_dir: {self.output_dir}")
+        logger.info(f"   - output_dir exists: {self.output_dir.exists()}")
+        logger.info(f"   - current working directory: {Path.cwd()}")
         
         # Validate input file
         try:
+            logger.info(f"📥 DATAFILTER: Validating input file: {step4_file}")
             validate_step5_input(step4_file)
             step4_path = Path(step4_file)
+            logger.info(f"📥 DATAFILTER: Input validation passed")
+            logger.info(f"   - step4_path: {step4_path}")
+            logger.info(f"   - step4_path absolute: {step4_path.absolute()}")
+            logger.info(f"   - step4_path exists: {step4_path.exists()}")
+            logger.info(f"   - step4_path size: {step4_path.stat().st_size if step4_path.exists() else 'N/A'}")
         except TSConverterError as e:
-            logger.error(f"Input validation failed: {e}")
+            logger.error(f"❌ DATAFILTER: Input validation failed: {e}")
             raise
         
         # Enhanced output file handling with directory management
         if output_file is None:
             base_name = step4_path.stem.replace(" - Step4", "")
             output_file = self.output_dir / f"{base_name} - Step5.xlsx"
-            logger.info(f"Auto-generated output path: {output_file}")
+            logger.info(f"📤 DATAFILTER: Auto-generated output path: {output_file}")
         else:
             output_file = Path(output_file)
-            logger.info(f"Using provided output path: {output_file}")
+            logger.info(f"📤 DATAFILTER: Using provided output path: {output_file}")
+            logger.info(f"   - output_file absolute: {output_file.absolute()}")
+            logger.info(f"   - output_file parent: {output_file.parent}")
+            logger.info(f"   - output_file parent exists: {output_file.parent.exists()}")
             
             # Ensure parent directory exists for provided output path
             if not output_file.parent.exists():
-                logger.info(f"Creating output directory: {output_file.parent}")
+                logger.info(f"📂 DATAFILTER: Creating output directory: {output_file.parent}")
                 output_file.parent.mkdir(parents=True, exist_ok=True)
+                logger.info(f"📂 DATAFILTER: Output directory created: {output_file.parent.exists()}")
         
-        # CRITICAL FIX: Always ensure output_file path is writable, no fallback for explicit paths
+        # CRITICAL FIX: Always ensure output_file path is writable
         try:
+            logger.info(f"🔒 DATAFILTER: Checking output path writability...")
+            
             # For explicitly provided paths, create the directory structure if needed
             if output_file.parent != self.output_dir:
-                logger.info(f"Ensuring directory structure exists: {output_file.parent}")
+                logger.info(f"📂 DATAFILTER: Ensuring directory structure exists: {output_file.parent}")
                 output_file.parent.mkdir(parents=True, exist_ok=True)
+                logger.info(f"📂 DATAFILTER: Directory structure verified: {output_file.parent.exists()}")
             
-            # Simple writability check without FileValidator.validate_output_writable which may change path
-            if output_file.exists() and not os.access(output_file, os.W_OK):
-                raise TSConverterError(f"Output file is not writable: {output_file}")
+            # Simple writability check
+            if output_file.exists():
+                logger.info(f"📄 DATAFILTER: Output file already exists, checking writability")
+                if not os.access(output_file, os.W_OK):
+                    raise TSConverterError(f"Output file is not writable: {output_file}")
+                logger.info(f"📄 DATAFILTER: Existing output file is writable")
+            
             if not os.access(output_file.parent, os.W_OK):
                 raise TSConverterError(f"Output directory is not writable: {output_file.parent}")
                 
-            logger.info(f"Output path validation successful: {output_file}")
+            logger.info(f"✅ DATAFILTER: Output path validation successful: {output_file}")
         except TSConverterError as e:
-            logger.error(f"Output validation failed: {e}")
+            logger.error(f"❌ DATAFILTER: Output validation failed: {e}")
             raise
         
-        logger.info(f"Input: {step4_path}")
-        logger.info(f"Final output: {output_file}")
+        logger.info(f"📝 DATAFILTER: Final file paths:")
+        logger.info(f"   📥 Input: {step4_path}")
+        logger.info(f"   📤 Output: {output_file}")
         
         # Copy Step4 file as starting point with enhanced error handling
         try:
+            logger.info(f"📋 DATAFILTER: Copying Step4 file to output location...")
+            logger.info(f"   - Source: {step4_path}")
+            logger.info(f"   - Destination: {output_file}")
+            logger.info(f"   - Source exists: {step4_path.exists()}")
+            logger.info(f"   - Destination parent exists: {output_file.parent.exists()}")
+            
             shutil.copy2(str(step4_path), str(output_file))
-            logger.info("Copied Step4 file as base")
+            
+            logger.info(f"✅ DATAFILTER: File copy completed")
+            logger.info(f"   - Output file exists: {output_file.exists()}")
+            logger.info(f"   - Output file size: {output_file.stat().st_size if output_file.exists() else 'N/A'}")
+            
         except (OSError, PermissionError) as e:
-            logger.error(f"Failed to copy input file to output location: {e}")
+            logger.error(f"❌ DATAFILTER: Failed to copy input file to output location: {e}")
+            logger.error(f"   - Source: {step4_path}")
+            logger.error(f"   - Destination: {output_file}")
+            logger.error(f"   - Source exists: {step4_path.exists()}")
+            logger.error(f"   - Destination parent exists: {output_file.parent.exists()}")
             raise TSConverterError(f"Could not create output file: {str(e)}")
         
         # Load workbook with enhanced error handling
         try:
+            logger.info(f"📊 DATAFILTER: Loading workbook from: {output_file}")
+            logger.info(f"   - File exists before loading: {output_file.exists()}")
+            logger.info(f"   - File size before loading: {output_file.stat().st_size if output_file.exists() else 'N/A'}")
+            
             wb = openpyxl.load_workbook(str(output_file))
             ws = wb.active
+            
+            logger.info(f"✅ DATAFILTER: Workbook loaded successfully")
+            logger.info(f"   - Worksheet title: {ws.title}")
+            logger.info(f"   - Worksheet max_row: {ws.max_row}")
+            logger.info(f"   - Worksheet max_column: {ws.max_column}")
+            
         except Exception as e:
-            logger.error(f"Failed to load workbook from {output_file}: {e}")
+            logger.error(f"❌ DATAFILTER: Failed to load workbook from {output_file}: {e}")
+            logger.error(f"   - File exists: {output_file.exists()}")
+            logger.error(f"   - File size: {output_file.stat().st_size if output_file.exists() else 'N/A'}")
             raise TSConverterError(f"Could not open output file for processing: {str(e)}")
         
         # Get initial stats
@@ -336,29 +387,66 @@ class DataFilter:
             
             # Save output file with enhanced error handling
             try:
+                logger.info(f"💾 DATAFILTER: Saving workbook to: {output_file}")
+                logger.info(f"   - Output file before save exists: {output_file.exists()}")
+                logger.info(f"   - Output file path: {output_file}")
+                logger.info(f"   - Output file absolute path: {output_file.absolute()}")
+                logger.info(f"   - Output file parent: {output_file.parent}")
+                logger.info(f"   - Output file parent exists: {output_file.parent.exists()}")
+                
                 wb.save(str(output_file))
-                logger.info(f"✅ Step 5 completed: {output_file}")
+                
+                logger.info(f"✅ DATAFILTER: Workbook save operation completed")
+                logger.info(f"   - Output file after save exists: {output_file.exists()}")
                 
                 # Verify file was actually saved and is accessible
                 if not output_file.exists():
+                    logger.error(f"❌ DATAFILTER: Output file was not created successfully!")
+                    logger.error(f"   - Expected path: {output_file}")
+                    logger.error(f"   - Absolute path: {output_file.absolute()}")
+                    logger.error(f"   - Parent directory exists: {output_file.parent.exists()}")
+                    
+                    # List parent directory contents
+                    if output_file.parent.exists():
+                        logger.error(f"   - Parent directory contents:")
+                        for item in output_file.parent.iterdir():
+                            logger.error(f"     - {item}")
+                    
                     raise TSConverterError(f"Output file was not created successfully: {output_file}")
                     
                 file_size = output_file.stat().st_size
-                logger.info(f"Output file size: {file_size} bytes")
+                logger.info(f"✅ DATAFILTER: File verification successful")
+                logger.info(f"   - Output file size: {file_size} bytes")
+                logger.info(f"   - Output file path: {output_file}")
                 
             except Exception as save_error:
-                logger.error(f"Failed to save file: {save_error}")
+                logger.error(f"❌ DATAFILTER: Failed to save file: {save_error}")
+                logger.error(f"   - Exception type: {type(save_error).__name__}")
+                logger.error(f"   - Exception args: {save_error.args}")
+                logger.error(f"   - Output file path: {output_file}")
+                logger.error(f"   - Output file exists: {output_file.exists()}")
+                logger.error(f"   - Output file parent exists: {output_file.parent.exists()}")
                 raise TSConverterError(f"Could not save output file: {str(save_error)}")
                 
         except Exception as process_error:
-            logger.error(f"Processing error during Step 5: {process_error}")
+            logger.error(f"❌ DATAFILTER: Processing error during Step 5: {process_error}")
+            logger.error(f"   - Exception type: {type(process_error).__name__}")
+            logger.error(f"   - Exception args: {process_error.args}")
             raise TSConverterError(f"Data processing failed: {str(process_error)}")
         finally:
             # Always close workbook to free resources
             try:
+                logger.info(f"🔒 DATAFILTER: Closing workbook...")
                 wb.close()
+                logger.info(f"✅ DATAFILTER: Workbook closed successfully")
             except Exception as close_error:
-                logger.warning(f"Could not close workbook properly: {close_error}")
+                logger.warning(f"⚠️ DATAFILTER: Could not close workbook properly: {close_error}")
+        
+        logger.info(f"🎉 DATAFILTER: Process completed successfully!")
+        logger.info(f"   - Final output path: {output_file}")
+        logger.info(f"   - Final output absolute: {output_file.absolute()}")
+        logger.info(f"   - Final output exists: {output_file.exists()}")
+        logger.info(f"   - Returning: {str(output_file)}")
         
         return str(output_file)
 
