@@ -100,9 +100,21 @@ class DataFilter:
         h_col_num = openpyxl.utils.column_index_from_string('H')
         rows_to_delete = []
         
-        # Find all rows to delete (process from bottom to top to avoid index issues)
-        for row in range(worksheet.max_row, self.start_row - 1, -1):
-            h_value = worksheet.cell(row, h_col_num).value
+        # OPTIMIZATION: Bulk read column H to identify NA rows
+        h_values = []
+        for row in worksheet.iter_rows(
+            min_row=self.start_row,
+            max_row=worksheet.max_row,
+            min_col=h_col_num,
+            max_col=h_col_num,
+            values_only=True
+        ):
+            h_values.append(row[0])
+        
+        # Process bulk data to find NA rows (reverse order to avoid index issues)
+        for i in range(len(h_values) - 1, -1, -1):
+            row = self.start_row + i
+            h_value = h_values[i]
             
             if self.is_na_value(h_value):
                 rows_to_delete.append(row)
@@ -132,15 +144,44 @@ class DataFilter:
         h_col_num = openpyxl.utils.column_index_from_string('H')
         duplicate_groups = defaultdict(list)
         
-        # Find all SD rows and group by comparison columns
-        for row in range(self.start_row, worksheet.max_row + 1):
-            h_value = worksheet.cell(row, h_col_num).value
+        # OPTIMIZATION: Bulk read all comparison columns for SD detection
+        comparison_col_nums = [openpyxl.utils.column_index_from_string(col) for col in self.comparison_columns]
+        all_col_nums = [h_col_num] + comparison_col_nums
+        
+        # Read all required columns at once
+        bulk_data = []
+        for row in worksheet.iter_rows(
+            min_row=self.start_row,
+            max_row=worksheet.max_row,
+            min_col=min(all_col_nums),
+            max_col=max(all_col_nums),
+            values_only=True
+        ):
+            bulk_data.append(row)
+        
+        # Process bulk data efficiently to find SD rows
+        for i, row_data in enumerate(bulk_data):
+            row = self.start_row + i
+            h_value = row_data[h_col_num - min(all_col_nums)]  # Adjust index for column position
             
             if h_value and isinstance(h_value, str) and h_value.strip().upper() == "SD":
-                # Get comparison values
-                comparison_values = self.get_row_values(worksheet, row, self.comparison_columns)
-                duplicate_groups[comparison_values].append(row)
-                logger.debug(f"SD row {row}: {comparison_values}")
+                # Extract comparison values from bulk data
+                comparison_values = []
+                for col_letter in self.comparison_columns:
+                    col_idx = openpyxl.utils.column_index_from_string(col_letter) - min(all_col_nums)
+                    cell_value = row_data[col_idx] if col_idx < len(row_data) else None
+                    
+                    # Normalize value for comparison
+                    if cell_value is None:
+                        comparison_values.append("")
+                    elif isinstance(cell_value, str):
+                        comparison_values.append(cell_value.strip())
+                    else:
+                        comparison_values.append(str(cell_value))
+                
+                comparison_values_tuple = tuple(comparison_values)
+                duplicate_groups[comparison_values_tuple].append(row)
+                logger.debug(f"SD row {row}: {comparison_values_tuple}")
         
         # Filter to only actual duplicates (groups with > 1 row)
         actual_duplicates = {k: v for k, v in duplicate_groups.items() if len(v) > 1}
