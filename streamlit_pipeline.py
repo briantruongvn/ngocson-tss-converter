@@ -386,18 +386,66 @@ class StreamlitTSSPipeline:
             })
             
             # Update session state with final results
+            logger.info(f"🔄 PIPELINE: Updating final session state...")
+            logger.info(f"   - final_output: {final_output}")
+            logger.info(f"   - final_output exists before session update: {final_output.exists()}")
+            
             safe_update_session_state({
                 'processing_stats': self.processing_stats,
                 'output_file_path': str(final_output),
                 'processing_complete': True
             })
             
-            logger.info(f"Pipeline completed successfully: {final_output}")
-            logger.info(f"Quality score: {quality_summary['quality_score']:.1f}/100")
+            logger.info(f"✅ PIPELINE: Session state updated successfully")
+            logger.info(f"   - final_output exists after session update: {final_output.exists()}")
+            
+            logger.info(f"🎉 Pipeline completed successfully: {final_output}")
+            logger.info(f"📊 Quality score: {quality_summary['quality_score']:.1f}/100")
+            
+            logger.info(f"📈 PIPELINE: Preparing success stats...")
+            logger.info(f"   - final_output exists before stats prep: {final_output.exists()}")
             
             # Add success metrics to error handler
             success_stats = self.processing_stats.copy()
             success_stats['error_summary'] = global_error_handler.get_error_summary()
+            
+            logger.info(f"✅ PIPELINE: Success stats prepared")
+            logger.info(f"   - final_output exists before return: {final_output.exists()}")
+            
+            # CRITICAL DEBUG: Add extensive pre-return validation
+            logger.info(f"🔍 FINAL VALIDATION before return:")
+            logger.info(f"   - final_output type: {type(final_output)}")
+            logger.info(f"   - final_output: {final_output}")
+            logger.info(f"   - final_output absolute: {final_output.absolute()}")
+            logger.info(f"   - final_output exists: {final_output.exists()}")
+            logger.info(f"   - final_output parent: {final_output.parent}")
+            logger.info(f"   - final_output parent exists: {final_output.parent.exists()}")
+            
+            if final_output.exists():
+                try:
+                    file_size = final_output.stat().st_size
+                    logger.info(f"   - final_output size: {file_size} bytes")
+                    
+                    # Try to read file to ensure it's accessible
+                    with open(final_output, 'rb') as f:
+                        first_bytes = f.read(100)
+                    logger.info(f"   - final_output readable: True (first 100 bytes: {len(first_bytes)})")
+                    
+                except Exception as file_check_error:
+                    logger.error(f"❌ FINAL VALIDATION: File check failed: {file_check_error}")
+            else:
+                logger.error(f"❌ FINAL VALIDATION: File does not exist before return!")
+            
+            logger.info(f"🚀 PIPELINE: Returning success result...")
+            
+            # Add extra file existence check right before return
+            if not final_output.exists():
+                logger.error(f"🚨 CRITICAL: File disappeared right before return!")
+                logger.error(f"   - Expected path: {final_output}")
+                logger.error(f"   - Directory contents:")
+                if final_output.parent.exists():
+                    for item in final_output.parent.iterdir():
+                        logger.error(f"     - {item}")
             
             return True, final_output, success_stats
             
@@ -754,14 +802,27 @@ class StreamlitTSSPipeline:
     def _extract_step5_stats(self, output_file: Path):
         """Extract statistics from Step 5 output for display with security validation"""
         try:
+            logger.info(f"📊 EXTRACT_STATS: Starting stats extraction for: {output_file}")
+            logger.info(f"   - File exists before extraction: {output_file.exists()}")
+            logger.info(f"   - File absolute path: {output_file.absolute()}")
+            
             # Security validation: verify file path
             if not validate_path_security(output_file, self.temp_dir):
-                logger.warning(f"Skipping stats extraction for suspicious file: {output_file}")
+                logger.warning(f"⚠️ EXTRACT_STATS: Skipping stats extraction for suspicious file: {output_file}")
                 return
+            
+            logger.info(f"✅ EXTRACT_STATS: Security validation passed")
                 
             import openpyxl
+            logger.info(f"📊 EXTRACT_STATS: Loading workbook from: {output_file}")
+            logger.info(f"   - File exists before openpyxl.load: {output_file.exists()}")
+            
             wb = openpyxl.load_workbook(output_file, read_only=True)
             ws = wb.active
+            
+            logger.info(f"📊 EXTRACT_STATS: Workbook loaded successfully")
+            logger.info(f"   - Worksheet title: {ws.title}")
+            logger.info(f"   - Max rows: {ws.max_row}")
             
             # Count final rows (excluding header)
             final_rows = max(0, ws.max_row - 3)  # Subtract header rows, ensure non-negative
@@ -771,16 +832,34 @@ class StreamlitTSSPipeline:
                 "final_rows": final_rows,
             }
             
+            logger.info(f"📊 EXTRACT_STATS: Updating processing stats")
+            logger.info(f"   - Final rows: {final_rows}")
+            
             self.processing_stats.update(stats_update)
             
             # Also update session state
+            logger.info(f"📊 EXTRACT_STATS: Updating session state")
             safe_update_session_state({
                 'processing_stats': self.processing_stats
             })
             
+            logger.info(f"📊 EXTRACT_STATS: Closing workbook")
             wb.close()
+            logger.info(f"✅ EXTRACT_STATS: Stats extraction completed successfully")
+            
         except Exception as e:
-            logger.warning(f"Could not extract statistics: {e}")
+            logger.error(f"❌ EXTRACT_STATS: Stats extraction failed: {e}")
+            logger.error(f"   - Exception type: {type(e).__name__}")
+            logger.error(f"   - Exception args: {e.args}")
+            logger.error(f"   - File path: {output_file}")
+            logger.error(f"   - File exists: {output_file.exists() if hasattr(output_file, 'exists') else 'N/A'}")
+            
+            # Import traceback for full error context
+            import traceback
+            logger.error(f"   - Full traceback:\n{traceback.format_exc()}")
+            
+            # Don't re-raise, just log the warning
+            logger.warning(f"⚠️ EXTRACT_STATS: Could not extract statistics: {e}")
     
     def cleanup_session(self):
         """Clean up session directory and temporary files with security validation"""
