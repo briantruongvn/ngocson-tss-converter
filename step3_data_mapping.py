@@ -40,20 +40,20 @@ class DataMapper:
         # Get configuration
         self.config = get_config()
         
-        # Column mappings for different sheet types
+        # Column mappings for different sheet types (UPDATED)
         self.f_type_mapping = self.config.get('step3.f_type_mapping', {
-            'C': 'D', 'H': 'F', 'KL': 'I', 'M': 'J', 'N': 'K', 
-            'O': 'L', 'P': 'M', 'Q': 'N', 'S': 'O', 'T': 'H', 'W': 'P'
+            'B': 'Q'
         })
         
         self.m_type_mapping = self.config.get('step3.m_type_mapping', {
-            'B': 'B', 'C': 'C', 'I': 'D', 'J': 'F', 'K': 'E', 
-            'NO': 'I', 'P': 'J', 'Q': 'K', 'R': 'L', 'S': 'M', 'T': 'N', 'W': 'H', 'Z': 'P'
+            'B': 'Q', 'C': 'B', 'D': 'C', 'J': 'D', 'L': 'E', 'K': 'F',
+            'X': 'H', 'Q': 'J', 'R': 'K', 'S': 'L', 'T': 'M', 'U': 'N', 
+            'W': 'O', 'AA': 'P'
         })
         
         self.c_type_mapping = self.config.get('step3.c_type_mapping', {
-            'B': 'B', 'C': 'C', 'H': 'D', 'I': 'F', 'J': 'E', 
-            'MN': 'I', 'O': 'J', 'P': 'K', 'Q': 'L', 'R': 'M', 'S': 'N', 'V': 'H', 'Y': 'P'
+            'B': 'Q', 'C': 'B', 'D': 'C', 'I': 'D', 'J': 'F', 'K': 'E',
+            'Q': 'K', 'R': 'L', 'S': 'M', 'T': 'N', 'V': 'O', 'W': 'H', 'Z': 'P'
         })
     
     def get_sheet_type(self, sheet_name: str) -> Optional[str]:
@@ -165,6 +165,96 @@ class DataMapper:
         except Exception as e:
             logger.warning(f"Error reading cell {getattr(cell, 'coordinate', 'unknown')}: {e} - using empty value")
             return ""
+
+    def set_column_a_prefix(self, target_ws, target_row: int, sheet_type: str) -> None:
+        """
+        Set column A prefix based on sheet type
+        
+        Args:
+            target_ws: Target worksheet
+            target_row: Target row number
+            sheet_type: Sheet type ('F', 'M', 'C')
+        """
+        if sheet_type == 'F':
+            target_ws.cell(target_row, 1, "Art")
+        # M-type and C-type: do not set Column A prefix (leave unchanged)
+
+    def handle_f_type_combinations(self, source_ws, source_row: int, target_ws, target_row: int) -> None:
+        """
+        Handle special F-type combinations: K & L → I
+        
+        Args:
+            source_ws: Source worksheet
+            source_row: Source row number
+            target_ws: Target worksheet  
+            target_row: Target row number
+        """
+        try:
+            k_value = self.safe_cell_value(source_ws.cell(source_row, openpyxl.utils.column_index_from_string('K')))
+            l_value = self.safe_cell_value(source_ws.cell(source_row, openpyxl.utils.column_index_from_string('L')))
+            
+            if k_value and l_value:
+                combined = f"{k_value}-{l_value}"
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), combined)
+                logger.debug(f"F-type combination K&L→I: {k_value}-{l_value} = {combined}")
+            elif k_value:
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), k_value)
+                logger.debug(f"F-type combination K→I: {k_value}")
+            elif l_value:
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), l_value)
+                logger.debug(f"F-type combination L→I: {l_value}")
+        except Exception as e:
+            logger.warning(f"Error handling F-type combinations at row {source_row}: {e}")
+
+    def handle_m_type_combinations(self, source_ws, source_row: int, target_ws, target_row: int) -> None:
+        """
+        Handle special M-type combinations: O & P → I
+        
+        Args:
+            source_ws: Source worksheet
+            source_row: Source row number
+            target_ws: Target worksheet  
+            target_row: Target row number
+        """
+        try:
+            o_value = self.safe_cell_value(source_ws.cell(source_row, openpyxl.utils.column_index_from_string('O')))
+            p_value = self.safe_cell_value(source_ws.cell(source_row, openpyxl.utils.column_index_from_string('P')))
+            
+            if o_value and p_value:
+                combined = f"{o_value}-{p_value}"
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), combined)
+                logger.debug(f"M-type combination O&P→I: {o_value}-{p_value} = {combined}")
+            elif o_value:
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), o_value)
+            elif p_value:
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), p_value)
+        except Exception as e:
+            logger.warning(f"Error handling M-type combinations at row {source_row}: {e}")
+
+    def handle_c_type_combinations(self, source_ws, source_row: int, target_ws, target_row: int) -> None:
+        """
+        Handle special C-type combinations: N & O → I
+        
+        Args:
+            source_ws: Source worksheet
+            source_row: Source row number
+            target_ws: Target worksheet
+            target_row: Target row number
+        """
+        try:
+            n_value = self.safe_cell_value(source_ws.cell(source_row, openpyxl.utils.column_index_from_string('N')))
+            o_value = self.safe_cell_value(source_ws.cell(source_row, openpyxl.utils.column_index_from_string('O')))
+            
+            if n_value and o_value:
+                combined = f"{n_value}-{o_value}"
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), combined)
+                logger.debug(f"C-type combination N&O→I: {n_value}-{o_value} = {combined}")
+            elif n_value:
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), n_value)
+            elif o_value:
+                target_ws.cell(target_row, openpyxl.utils.column_index_from_string('I'), o_value)
+        except Exception as e:
+            logger.warning(f"Error handling C-type combinations at row {source_row}: {e}")
     
     def combine_columns(self, worksheet, row: int, col1: str, col2: str, delimiter: str = "-") -> str:
         """
@@ -232,23 +322,32 @@ class DataMapper:
             
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
-            # Apply column mappings
-            for source_col, target_col in self.f_type_mapping.items():
-                if source_col == 'KL':  # Special case: combine K & L
-                    combined_value = self.combine_columns(source_ws, source_row, 'K', 'L')
-                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
-                    target_ws.cell(current_target_row, target_col_num, combined_value)
-                    logger.debug(f"Combined K&L -> {target_col}: '{combined_value}'")
-                else:
-                    # Single column mapping
+            # Set column A prefix for F-type
+            self.set_column_a_prefix(target_ws, current_target_row, 'F')
+            
+            # Handle F-type special combination: K & L → I
+            self.handle_f_type_combinations(source_ws, source_row, target_ws, current_target_row)
+            
+            # Apply F-type column mappings using safe approach
+            source_values = {}
+            for source_col in self.f_type_mapping.keys():
+                try:
                     source_col_num = openpyxl.utils.column_index_from_string(source_col)
-                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
-                    
                     source_cell = source_ws.cell(source_row, source_col_num)
                     source_value = self.safe_cell_value(source_cell)
                     if source_value:
-                        target_ws.cell(current_target_row, target_col_num, source_value)
-                        logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
+                        source_values[source_col] = source_value
+                except Exception as e:
+                    logger.warning(f"Error reading F-type source column {source_col}: {e}")
+                    
+            for source_col, target_col in self.f_type_mapping.items():
+                if source_col in source_values:
+                    try:
+                        target_col_num = openpyxl.utils.column_index_from_string(target_col)
+                        target_ws.cell(current_target_row, target_col_num, source_values[source_col])
+                        logger.debug(f"F-type {source_col} -> {target_col}: '{source_values[source_col][:30]}...'")
+                    except Exception as e:
+                        logger.warning(f"Error mapping F-type {source_col} -> {target_col}: {e}")
             
             current_target_row += 1
         
@@ -288,23 +387,34 @@ class DataMapper:
             
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
-            # Apply column mappings
-            for source_col, target_col in self.m_type_mapping.items():
-                if source_col == 'NO':  # Special case: combine N & O
-                    combined_value = self.combine_columns(source_ws, source_row, 'N', 'O')
-                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
-                    target_ws.cell(current_target_row, target_col_num, combined_value)
-                    logger.debug(f"Combined N&O -> {target_col}: '{combined_value}'")
-                else:
-                    # Single column mapping
+            # Set column A prefix for M-type
+            self.set_column_a_prefix(target_ws, current_target_row, 'M')
+            
+            # Handle M-type special combination: O & P → I
+            self.handle_m_type_combinations(source_ws, source_row, target_ws, current_target_row)
+            
+            # Apply M-type column mappings using safe approach
+            # First, collect all source values to avoid overwriting issues
+            source_values = {}
+            for source_col in self.m_type_mapping.keys():
+                try:
                     source_col_num = openpyxl.utils.column_index_from_string(source_col)
-                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
-                    
                     source_cell = source_ws.cell(source_row, source_col_num)
                     source_value = self.safe_cell_value(source_cell)
                     if source_value:
-                        target_ws.cell(current_target_row, target_col_num, source_value)
-                        logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
+                        source_values[source_col] = source_value
+                except Exception as e:
+                    logger.warning(f"Error reading source column {source_col}: {e}")
+                    
+            # Then apply all mappings
+            for source_col, target_col in self.m_type_mapping.items():
+                if source_col in source_values:
+                    try:
+                        target_col_num = openpyxl.utils.column_index_from_string(target_col)
+                        target_ws.cell(current_target_row, target_col_num, source_values[source_col])
+                        logger.debug(f"M-type {source_col} -> {target_col}: '{source_values[source_col][:30]}...'")
+                    except Exception as e:
+                        logger.warning(f"Error mapping {source_col} -> {target_col}: {e}")
             
             current_target_row += 1
         
@@ -344,23 +454,32 @@ class DataMapper:
             
             logger.debug(f"Processing source row {source_row} -> target row {current_target_row}")
             
-            # Apply column mappings
-            for source_col, target_col in self.c_type_mapping.items():
-                if source_col == 'MN':  # Special case: combine M & N
-                    combined_value = self.combine_columns(source_ws, source_row, 'M', 'N')
-                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
-                    target_ws.cell(current_target_row, target_col_num, combined_value)
-                    logger.debug(f"Combined M&N -> {target_col}: '{combined_value}'")
-                else:
-                    # Single column mapping
+            # Set column A prefix for C-type (not specified in requirements)
+            self.set_column_a_prefix(target_ws, current_target_row, 'C')
+            
+            # Handle C-type special combination: N & O → I
+            self.handle_c_type_combinations(source_ws, source_row, target_ws, current_target_row)
+            
+            # Apply C-type column mappings using safe approach
+            source_values = {}
+            for source_col in self.c_type_mapping.keys():
+                try:
                     source_col_num = openpyxl.utils.column_index_from_string(source_col)
-                    target_col_num = openpyxl.utils.column_index_from_string(target_col)
-                    
                     source_cell = source_ws.cell(source_row, source_col_num)
                     source_value = self.safe_cell_value(source_cell)
                     if source_value:
-                        target_ws.cell(current_target_row, target_col_num, source_value)
-                        logger.debug(f"{source_col} -> {target_col}: '{source_value}'")
+                        source_values[source_col] = source_value
+                except Exception as e:
+                    logger.warning(f"Error reading C-type source column {source_col}: {e}")
+                    
+            for source_col, target_col in self.c_type_mapping.items():
+                if source_col in source_values:
+                    try:
+                        target_col_num = openpyxl.utils.column_index_from_string(target_col)
+                        target_ws.cell(current_target_row, target_col_num, source_values[source_col])
+                        logger.debug(f"C-type {source_col} -> {target_col}: '{source_values[source_col][:30]}...'")
+                    except Exception as e:
+                        logger.warning(f"Error mapping C-type {source_col} -> {target_col}: {e}")
             
             current_target_row += 1
         
@@ -368,15 +487,13 @@ class DataMapper:
         logger.info(f"Mapped {rows_mapped} rows from C-type sheet")
         return current_target_row
     
-    def process_file(self, source_file: Union[str, Path],
-                    step2_file: Union[str, Path],
+    def process_file(self, input_file: Union[str, Path],
                     output_file: Optional[Union[str, Path]] = None) -> str:
         """
-        Process source file and map data to Step2 template
+        Process input file and map data to Step2 template (auto-detected)
         
         Args:
-            source_file: Source Excel file to extract data from
-            step2_file: Step2 template file
+            input_file: Input Excel file to extract data from (e.g., input-1.xlsx)
             output_file: Optional output file path (if None, auto-generate Step3)
             
         Returns:
@@ -384,19 +501,25 @@ class DataMapper:
         """
         logger.info("📋 Step 3: Data Mapping")
         
-        # Validate input files
+        # Validate input file
         try:
-            source_path = FileValidator.validate_file_format(source_file)
-            # Skip Step3 validation as Step2 only has 3 template rows, no data rows
-            # validate_step3_input(step2_file)
-            step2_path = Path(step2_file)
+            input_path = FileValidator.validate_file_format(input_file)
         except TSConverterError as e:
             logger.error(f"Input validation failed: {e}")
             raise
         
+        # Auto-detect Step2 template file
+        base_name = input_path.stem  # e.g., "input-1"
+        step2_file = self.output_dir / f"{base_name} - Step2.xlsx"
+        
+        try:
+            step2_path = FileValidator.validate_file_format(step2_file)
+        except TSConverterError as e:
+            logger.error(f"Step2 template not found: {step2_file}")
+            raise
+        
         # Auto-generate output file if not provided
         if output_file is None:
-            base_name = step2_path.stem.replace(" - Step2", "")
             output_file = self.output_dir / f"{base_name} - Step3.xlsx"
         else:
             output_file = Path(output_file)
@@ -408,7 +531,7 @@ class DataMapper:
             logger.error(f"Output validation failed: {e}")
             raise
         
-        logger.info(f"Source: {source_path}")
+        logger.info(f"Input Source: {input_path}")
         logger.info(f"Step2 Template: {step2_path}")
         logger.info(f"Output: {output_file}")
         
@@ -417,12 +540,12 @@ class DataMapper:
         logger.info("Copied Step2 template as base")
         
         # Load workbooks
-        source_wb = openpyxl.load_workbook(str(source_path))
+        source_wb = openpyxl.load_workbook(str(input_path))
         target_wb = openpyxl.load_workbook(str(output_file))
         target_ws = target_wb.active
         
         # Find next available row in target (after existing data)
-        next_row = 4  # Start from row 4 (after headers and article data)
+        next_row = 11  # Start from row 11 (after headers and article data)
         while target_ws.cell(next_row, 2).value is not None:  # Check column B
             next_row += 1
         
@@ -494,9 +617,8 @@ class DataMapper:
 def main():
     """Command line interface for data mapping"""
     parser = argparse.ArgumentParser(description='Data Mapper Step 3 - Map Excel Data')
-    parser.add_argument('source_file', help='Source Excel file to extract data from')
-    parser.add_argument('step2_file', help='Step2 template file (*.xlsx)')
-    parser.add_argument('-o', '--output', help='Output file path')
+    parser.add_argument('input_file', help='Input Excel file to extract data from (e.g., input-1.xlsx)')
+    parser.add_argument('-o', '--output', help='Output file path (optional, auto-generates Step3.xlsx)')
     parser.add_argument('-d', '--base-dir', help='Base directory', default='.')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose logging')
     
@@ -510,7 +632,7 @@ def main():
     mapper = DataMapper(args.base_dir)
     
     try:
-        result = mapper.process_file(args.source_file, args.step2_file, args.output)
+        result = mapper.process_file(args.input_file, args.output)
         
         print(f"\n✅ Success!")
         print(f"📁 Output: {result}")

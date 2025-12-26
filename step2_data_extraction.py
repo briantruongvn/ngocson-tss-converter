@@ -38,9 +38,9 @@ class DataExtractor:
         self.output_dir = self.base_dir / "output"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Headers to search for
-        self.name_headers = ["Product name", "Article name", "product name", "article name"]
-        self.number_headers = ["Product number", "Article number", "product number", "article number"]
+        # Headers to search for (updated to include both article and product variations)
+        self.name_headers = ["Article name", "Product name", "article name", "product name"]
+        self.number_headers = ["Article number", "Product number", "article number", "product number"]
     
     def is_cell_hidden(self, worksheet, row_num: int, col_num: int) -> bool:
         """
@@ -124,6 +124,109 @@ class DataExtractor:
         logger.debug(f"Header search in {worksheet.title}: checked {cells_checked} cells, skipped {hidden_cells_skipped} hidden cells, found {len(found_cells)} matches")
         return found_cells
     
+    def find_m_textile_sheets(self, workbook) -> List[str]:
+        """
+        Find all sheets that contain 'M-Textile' or 'M- textile' (case insensitive)
+        
+        Args:
+            workbook: openpyxl workbook object
+            
+        Returns:
+            List of sheet names that match the M-Textile pattern
+        """
+        m_textile_sheets = []
+        pattern_variations = ['m-textile', 'm- textile', 'm-textile', 'm- textile']
+        
+        for sheet_name in workbook.sheetnames:
+            sheet_name_lower = sheet_name.lower()
+            for pattern in pattern_variations:
+                if pattern in sheet_name_lower:
+                    m_textile_sheets.append(sheet_name)
+                    logger.info(f"Found M-Textile sheet: {sheet_name}")
+                    break
+        
+        if not m_textile_sheets:
+            logger.warning("No M-Textile sheets found in workbook")
+        
+        return m_textile_sheets
+
+    def find_product_combination_header(self, worksheet) -> Optional[Tuple[int, int]]:
+        """
+        Find the 'Product combination' or 'Product information' header in a worksheet
+        
+        Args:
+            worksheet: openpyxl worksheet object
+            
+        Returns:
+            Tuple of (row, col) if found, None otherwise
+        """
+        search_patterns = ["product combination", "product information"]
+        
+        try:
+            # Search through the worksheet for header patterns (case insensitive)
+            for row_num in range(1, min(worksheet.max_row + 1, 100)):  # Limit to first 100 rows
+                for col_num in range(1, min(worksheet.max_column + 1, 50)):  # Limit to first 50 columns
+                    # Skip hidden cells
+                    if self.is_cell_hidden(worksheet, row_num, col_num):
+                        continue
+                        
+                    try:
+                        cell = worksheet.cell(row=row_num, column=col_num)
+                        cell_value = self.safe_cell_value(cell)
+                        if cell_value:
+                            for pattern in search_patterns:
+                                if pattern in cell_value.lower():
+                                    logger.info(f"Found '{pattern}' at {worksheet.title}!{cell.coordinate}: {cell_value}")
+                                    return (cell.row, cell.column)
+                    except Exception as cell_error:
+                        logger.debug(f"Error reading cell {worksheet.title}!{row_num},{col_num}: {cell_error}")
+                        continue
+        except Exception as e:
+            logger.error(f"Error searching for product headers in {worksheet.title}: {e}")
+        
+        logger.warning(f"Product header (combination/information) not found in {worksheet.title}")
+        return None
+
+    def find_headers_upward_from_position(self, worksheet, start_row: int, headers: List[str]) -> List[Tuple[int, int]]:
+        """
+        Search upward from a given position to find specified headers
+        
+        Args:
+            worksheet: openpyxl worksheet object
+            start_row: Row number to start searching upward from
+            headers: List of header strings to search for (case insensitive)
+            
+        Returns:
+            List of (row, col) tuples where headers are found
+        """
+        found_cells = []
+        
+        try:
+            # Search upward from start_row to row 1
+            for row_num in range(start_row, 0, -1):  # Search upward
+                for col_num in range(1, min(worksheet.max_column + 1, 50)):  # Limit to first 50 columns
+                    # Skip hidden cells
+                    if self.is_cell_hidden(worksheet, row_num, col_num):
+                        continue
+                        
+                    try:
+                        cell = worksheet.cell(row=row_num, column=col_num)
+                        cell_value = self.safe_cell_value(cell)
+                        if cell_value:
+                            for header in headers:
+                                if header.lower() in cell_value.lower():
+                                    found_cells.append((cell.row, cell.column))
+                                    logger.info(f"Found '{header}' upward at {worksheet.title}!{cell.coordinate}: {cell_value}")
+                                    break
+                    except Exception as cell_error:
+                        logger.debug(f"Error reading cell {worksheet.title}!{row_num},{col_num}: {cell_error}")
+                        continue
+                        
+        except Exception as e:
+            logger.error(f"Error searching headers upward in {worksheet.title}: {e}")
+        
+        return found_cells
+
     def safe_cell_value(self, cell) -> str:
         """
         Safely extract cell value, handling formula errors and edge cases
@@ -286,6 +389,58 @@ class DataExtractor:
         
         logger.debug(f"Finished extracting from column {start_col}, found {len(data)} items, skipped {hidden_rows_skipped} hidden rows")
         return data
+
+    def populate_template_with_merged_cells(self, worksheet, unique_names: List[str], unique_numbers: List[str]) -> None:
+        """
+        Populate Step1 template with merged cells starting from column R
+        
+        Args:
+            worksheet: Step1 worksheet object
+            unique_names: List of unique article names
+            unique_numbers: List of unique article numbers
+        """
+        from openpyxl.styles import Alignment, PatternFill
+        
+        # Define light orange fill
+        light_orange_fill = PatternFill(start_color="FFCC99", end_color="FFCC99", fill_type="solid")
+        
+        max_pairs = max(len(unique_names), len(unique_numbers))
+        start_col = 18  # Column R = 18
+        
+        for i in range(max_pairs):
+            col = start_col + i  # R, S, T, etc.
+            col_letter = get_column_letter(col)
+            
+            # Article name: merge R1:R9 and apply 90-degree rotation
+            if i < len(unique_names):
+                name = unique_names[i]
+                # Merge range for article name (rows 1-9)
+                merge_range = f"{col_letter}1:{col_letter}9"
+                worksheet.merge_cells(merge_range)
+                
+                # Set the value in the first cell of the merged range
+                name_cell = worksheet.cell(row=1, column=col, value=name)
+                
+                # Apply 90-degree rotation, center alignment, and light orange background
+                name_cell.alignment = Alignment(
+                    horizontal="center", 
+                    vertical="center", 
+                    text_rotation=90,
+                    wrap_text=True
+                )
+                name_cell.fill = light_orange_fill
+                
+                logger.debug(f"Set merged {merge_range} = '{name}' with 90° rotation and light orange fill")
+            
+            # Article number: set in row 10
+            if i < len(unique_numbers):
+                number = unique_numbers[i]
+                number_cell = worksheet.cell(row=10, column=col, value=number)
+                
+                # Apply center alignment and light orange background for numbers
+                number_cell.alignment = Alignment(horizontal="center", vertical="center")
+                number_cell.fill = light_orange_fill
+                logger.debug(f"Set {number_cell.coordinate} = '{number}' with light orange fill")
     
     def remove_duplicates(self, name_data: List[str], number_data: List[str]) -> Tuple[List[str], List[str]]:
         """
@@ -318,6 +473,136 @@ class DataExtractor:
                 logger.info(f"Removed duplicate pair: ('{name}', '{number}')")
         
         return unique_names, unique_numbers
+
+    def process_m_textile_file(self, step1_file: Union[str, Path], 
+                              source_file: Union[str, Path],
+                              output_file: Optional[Union[str, Path]] = None) -> str:
+        """
+        Process Step1 file and extract data from M-Textile sheets using the new logic
+        
+        Args:
+            step1_file: Step1 template file path
+            source_file: Source Excel file to extract data from
+            output_file: Optional output file path (if None, auto-generate)
+            
+        Returns:
+            Path to output file
+        """
+        logger.info("📋 Step 2: M-Textile Data Extraction (New Logic)")
+        
+        # Validate input files
+        try:
+            validate_step2_input(step1_file, source_file)
+            step1_path = Path(step1_file)
+            source_path = Path(source_file)
+        except TSConverterError as e:
+            logger.error(f"Input validation failed: {e}")
+            raise
+        
+        # Auto-generate output file if not provided
+        if output_file is None:
+            base_name = step1_path.stem.replace(" - Step1", "")
+            output_file = self.output_dir / f"{base_name} - Step2.xlsx"
+        else:
+            output_file = Path(output_file)
+        
+        # Validate output path is writable
+        try:
+            output_file = FileValidator.validate_output_writable(output_file)
+        except TSConverterError as e:
+            logger.error(f"Output validation failed: {e}")
+            raise
+        
+        logger.info(f"Step1 Template: {step1_path}")
+        logger.info(f"Source Data: {source_path}")
+        logger.info(f"Output: {output_file}")
+        
+        # Load Step1 template (preserve formatting)
+        step1_wb = openpyxl.load_workbook(str(step1_path))
+        step1_ws = step1_wb.active
+        
+        # Load source file for data extraction
+        source_wb = openpyxl.load_workbook(str(source_path))
+        
+        # Find M-Textile sheets
+        m_textile_sheets = self.find_m_textile_sheets(source_wb)
+        if not m_textile_sheets:
+            logger.warning("No M-Textile sheets found - creating empty output")
+            step1_wb.save(str(output_file))
+            source_wb.close()
+            step1_wb.close()
+            return str(output_file)
+        
+        all_names = []
+        all_numbers = []
+        
+        # Process only M-Textile sheets
+        for sheet_name in m_textile_sheets:
+            logger.info(f"Processing M-Textile sheet: {sheet_name}")
+            try:
+                worksheet = source_wb[sheet_name]
+                
+                # Find "Product combination" or "Product information" header first
+                product_info_pos = self.find_product_combination_header(worksheet)
+                if not product_info_pos:
+                    logger.warning(f"No 'Product combination/information' header found in {sheet_name} - skipping")
+                    continue
+                
+                product_info_row = product_info_pos[0]
+                logger.info(f"Found product header at row {product_info_row} in {sheet_name}")
+                
+                # Search upward from product header for article/product headers
+                name_cells = self.find_headers_upward_from_position(worksheet, product_info_row, self.name_headers)
+                number_cells = self.find_headers_upward_from_position(worksheet, product_info_row, self.number_headers)
+                
+                # Extract data from found headers
+                for row, col in name_cells:
+                    try:
+                        names = self.extract_data_vertical(worksheet, row, col)
+                        all_names.extend(names)
+                        logger.info(f"Extracted {len(names)} names from {sheet_name}!{worksheet.cell(row, col).coordinate}")
+                    except Exception as e:
+                        logger.error(f"Error extracting names from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
+                        continue
+                
+                for row, col in number_cells:
+                    try:
+                        numbers = self.extract_data_vertical(worksheet, row, col)
+                        all_numbers.extend(numbers)
+                        logger.info(f"Extracted {len(numbers)} numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}")
+                    except Exception as e:
+                        logger.error(f"Error extracting numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
+                        continue
+                        
+            except Exception as e:
+                logger.error(f"Error processing M-Textile sheet {sheet_name}: {e}")
+                continue
+        
+        # Remove duplicates
+        unique_names, unique_numbers = self.remove_duplicates(all_names, all_numbers)
+        
+        logger.info(f"Found {len(all_names)} total names, {len(unique_names)} unique")
+        logger.info(f"Found {len(all_numbers)} total numbers, {len(unique_numbers)} unique")
+        logger.info(f"Creating {max(len(unique_names), len(unique_numbers))} article pairs")
+        
+        # Populate Step1 template with merged cells starting from column R
+        if unique_names or unique_numbers:
+            self.populate_template_with_merged_cells(step1_ws, unique_names, unique_numbers)
+        else:
+            logger.warning("No data extracted from M-Textile sheets")
+        
+        # Save output file
+        try:
+            step1_wb.save(str(output_file))
+            logger.info(f"✅ Step 2 M-Textile completed: {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to save file: {e}")
+            raise
+        
+        source_wb.close()
+        step1_wb.close()
+        
+        return str(output_file)
     
     def process_file_with_fallbacks(self, step1_file: Union[str, Path], 
                                    source_file: Union[str, Path],
@@ -713,8 +998,8 @@ def main():
     
     try:
         if args.source:
-            # Extract from specified source file
-            result = extractor.process_file(args.step1_file, args.source, args.output)
+            # Extract from specified source file using new M-Textile logic
+            result = extractor.process_m_textile_file(args.step1_file, args.source, args.output)
         else:
             # Auto-detect source file
             result = extractor.extract_from_step1_source(args.step1_file, args.output)

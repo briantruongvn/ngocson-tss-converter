@@ -563,7 +563,7 @@ def validate_step1_template(file_path: Union[str, Path]) -> bool:
         ExcelStructureValidator.validate_headers_exist(
             file_path, 
             expected_headers, 
-            search_rows=5
+            search_rows=15
         )
         
         # Check minimum column count (17 columns A-Q)

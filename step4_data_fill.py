@@ -26,7 +26,7 @@ class DataFiller:
     
     Fills empty cells in specified columns with data from the cell above:
     - Target columns: D, E, F
-    - Starting from row 4 (after headers and article data)
+    - Starting from row 11 (after headers and article data)
     - Forward fill: empty cells inherit value from cell above
     """
     
@@ -37,7 +37,7 @@ class DataFiller:
         
         # Target columns for data filling
         self.target_columns = ['D', 'E', 'F']
-        self.start_row = 4  # Start from row 4 (after headers)
+        self.start_row = 11  # Start from row 11 (after headers and article data)
     
     def find_last_data_row(self, worksheet) -> int:
         """

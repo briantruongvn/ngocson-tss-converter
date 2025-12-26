@@ -26,9 +26,11 @@ class DataFilter:
     """
     Data Filter for Step 5
     
-    Two-stage filtering process:
+    Four-stage filtering process:
     1. Remove rows where column H is NA/empty/"-"
-    2. Deduplicate SD rows based on columns B,C,D,E,F,I similarity
+    2. Find SD duplicate groups based on columns B,C,D,E,F,I,J similarity
+    3. Clear columns K,L,M for all SD rows
+    4. Deduplicate SD rows (keep first, remove others, set column N)
     """
     
     def __init__(self, base_dir: Optional[str] = None):
@@ -38,7 +40,7 @@ class DataFilter:
         
         # Columns for comparison in SD deduplication
         self.comparison_columns = ['B', 'C', 'D', 'E', 'F', 'I', 'J']
-        self.start_row = 4  # Start from row 4 (after headers)
+        self.start_row = 11  # Start from row 11 (after headers and article data)
     
     def is_na_value(self, cell_value) -> bool:
         """
@@ -84,6 +86,23 @@ class DataFilter:
                 values.append(str(cell_value))
         
         return tuple(values)
+    
+    def has_meaningful_data(self, comparison_values: tuple) -> bool:
+        """
+        Check if tuple has at least one non-empty value for meaningful deduplication
+        
+        Args:
+            comparison_values: Tuple of comparison values from columns B,C,D,E,F,I,J
+            
+        Returns:
+            True if at least one value is non-empty, False if all are empty/whitespace
+        """
+        for val in comparison_values:
+            if val and isinstance(val, str) and val.strip():
+                return True
+            elif val and not isinstance(val, str):
+                return True
+        return False
     
     def remove_na_rows(self, worksheet) -> int:
         """
@@ -132,20 +151,38 @@ class DataFilter:
         h_col_num = openpyxl.utils.column_index_from_string('H')
         duplicate_groups = defaultdict(list)
         
+        # Counters for logging
+        total_sd_rows = 0
+        meaningful_sd_rows = 0
+        empty_sd_rows = 0
+        
         # Find all SD rows and group by comparison columns
         for row in range(self.start_row, worksheet.max_row + 1):
             h_value = worksheet.cell(row, h_col_num).value
             
             if h_value and isinstance(h_value, str) and h_value.strip().upper() == "SD":
+                total_sd_rows += 1
                 # Get comparison values
                 comparison_values = self.get_row_values(worksheet, row, self.comparison_columns)
-                duplicate_groups[comparison_values].append(row)
-                logger.debug(f"SD row {row}: {comparison_values}")
+                
+                # Only group rows with meaningful data for deduplication
+                if self.has_meaningful_data(comparison_values):
+                    duplicate_groups[comparison_values].append(row)
+                    meaningful_sd_rows += 1
+                    logger.debug(f"SD row {row} (meaningful): {comparison_values}")
+                else:
+                    empty_sd_rows += 1
+                    logger.debug(f"SD row {row} (all empty - skipping deduplication): {comparison_values}")
         
         # Filter to only actual duplicates (groups with > 1 row)
         actual_duplicates = {k: v for k, v in duplicate_groups.items() if len(v) > 1}
         
-        logger.info(f"Found {len(actual_duplicates)} SD duplicate groups")
+        logger.info(f"SD Row Analysis:")
+        logger.info(f"  Total SD rows found: {total_sd_rows}")
+        logger.info(f"  Meaningful SD rows (for deduplication): {meaningful_sd_rows}")
+        logger.info(f"  Empty SD rows (preserved individually): {empty_sd_rows}")
+        logger.info(f"Found {len(actual_duplicates)} SD duplicate groups from meaningful rows")
+        
         for group_key, rows in actual_duplicates.items():
             logger.debug(f"Group {group_key}: rows {rows}")
         
@@ -184,9 +221,41 @@ class DataFilter:
         logger.debug(f"No common value found for column {column}, using default 'Yearly'")
         return "Yearly"
     
+    def clear_sd_row_data(self, worksheet) -> int:
+        """
+        Step 5.3: Clear columns K, L, M for all rows with 'SD' in column H
+        
+        Args:
+            worksheet: openpyxl worksheet object
+            
+        Returns:
+            Number of SD rows processed
+        """
+        logger.info("Step 5.3: Clearing K,L,M for all SD rows")
+        
+        h_col_num = openpyxl.utils.column_index_from_string('H')
+        cleared_count = 0
+        
+        # Process all rows to find SD entries
+        for row in range(self.start_row, worksheet.max_row + 1):
+            h_value = worksheet.cell(row, h_col_num).value
+            
+            if h_value and isinstance(h_value, str) and h_value.strip().upper() == "SD":
+                # Clear columns K, L, M for this SD row
+                for col_letter in ['K', 'L', 'M']:
+                    col_num = openpyxl.utils.column_index_from_string(col_letter)
+                    worksheet.cell(row, col_num).value = None
+                    logger.debug(f"Cleared {col_letter}{row}")
+                
+                cleared_count += 1
+                logger.debug(f"Processed SD row {row}")
+        
+        logger.info(f"Cleared K,L,M for {cleared_count} SD rows")
+        return cleared_count
+    
     def deduplicate_sd_rows(self, worksheet) -> int:
         """
-        Deduplicate SD rows and clean data
+        Step 5.4: Deduplicate SD rows
         
         Args:
             worksheet: openpyxl worksheet object
@@ -212,16 +281,8 @@ class DataFilter:
             delete_rows = group_rows[1:]
             rows_to_delete.extend(delete_rows)
             
-            # Clean data in the kept row
-            logger.debug(f"Keeping row {keep_row}, cleaning columns K,L,M")
-            
-            # Clear columns K, L, M (keep J)
-            for col_letter in ['K', 'L', 'M']:
-                col_num = openpyxl.utils.column_index_from_string(col_letter)
-                worksheet.cell(keep_row, col_num).value = None
-                logger.debug(f"Cleared {col_letter}{keep_row}")
-            
-            # Set column N to common value or "Yearly"
+            # Set column N to common value or "Yearly" for the kept row
+            logger.debug(f"Keeping row {keep_row}, setting column N")
             n_col_num = openpyxl.utils.column_index_from_string('N')
             common_n_value = self.determine_common_value(worksheet, group_rows, 'N')
             worksheet.cell(keep_row, n_col_num).value = common_n_value
@@ -371,7 +432,13 @@ class DataFilter:
             # Step 5.1: Remove NA rows
             na_removed = self.remove_na_rows(ws)
             
-            # Step 5.2: Deduplicate SD rows
+            # Step 5.2: Find SD duplicate groups (for later use)
+            duplicate_groups = self.find_sd_duplicates(ws)
+            
+            # Step 5.3: Clear K,L,M for all SD rows
+            sd_cleared = self.clear_sd_row_data(ws)
+            
+            # Step 5.4: Deduplicate SD rows
             sd_removed = self.deduplicate_sd_rows(ws)
             
             # Get final stats
@@ -381,6 +448,7 @@ class DataFilter:
             logger.info("Processing Summary:")
             logger.info(f"  Initial rows: {initial_rows}")
             logger.info(f"  NA rows removed: {na_removed}")
+            logger.info(f"  SD rows cleared (K,L,M): {sd_cleared}")
             logger.info(f"  SD duplicates removed: {sd_removed}")
             logger.info(f"  Total rows removed: {total_removed}")
             logger.info(f"  Final rows: {final_rows}")

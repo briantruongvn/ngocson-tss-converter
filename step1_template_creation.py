@@ -26,9 +26,7 @@ class TemplateCreator:
     Standalone Template Creator for Step 1
     
     Creates structured output template with predefined headers:
-    - Row 1: Article name
-    - Row 2: Article number  
-    - Row 3: 17 column headers (A-Q)
+    - Row 10: 17 column headers (A-Q)
     """
     
     def __init__(self, base_dir: Optional[str] = None):
@@ -47,12 +45,6 @@ class TemplateCreator:
         self.template_headers = self.config.get("step1.template_headers", [])
         
         # Define styles
-        self.row1_2_style = {
-            "font": Font(bold=True, color="00000000"),
-            "fill": PatternFill(start_color="00B8E6B8", end_color="00B8E6B8", fill_type="solid"),
-            "alignment": Alignment(horizontal="left", vertical="center", wrap_text=True)
-        }
-        
         self.header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
     def create_template(self, input_file: Union[str, Path], 
@@ -98,21 +90,9 @@ class TemplateCreator:
         ws = wb.active
         ws.title = "Output Template"
         
-        # Row 1: Article name with formatting
-        cell1 = ws.cell(1, 1, "Article name")
-        cell1.font = self.row1_2_style["font"]
-        cell1.fill = self.row1_2_style["fill"]
-        cell1.alignment = self.row1_2_style["alignment"]
-        
-        # Row 2: Article number with formatting
-        cell2 = ws.cell(2, 1, "Article number")
-        cell2.font = self.row1_2_style["font"]
-        cell2.fill = self.row1_2_style["fill"]
-        cell2.alignment = self.row1_2_style["alignment"]
-        
-        # Row 3: Headers (17 columns A-Q) with specific formatting and column widths
+        # Row 10: Headers (17 columns A-Q) with specific formatting and column widths
         for col_idx, header_info in enumerate(self.template_headers, 1):
-            cell = ws.cell(3, col_idx, header_info["name"])
+            cell = ws.cell(10, col_idx, header_info["name"])
             
             # Apply font with specific color for each column
             cell.font = Font(bold=True, color=header_info["font_color"])

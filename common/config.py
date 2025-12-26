@@ -63,16 +63,17 @@ class TSConverterConfig:
         },
         "step3": {
             "f_type_mapping": {
-                "C": "D", "H": "F", "KL": "I", "M": "J", "N": "K", 
-                "O": "L", "P": "M", "Q": "N", "S": "O", "T": "H", "W": "P"
+                "B": "Q", "T": "H", "H": "F", "M": "J", "N": "K", 
+                "O": "L", "P": "M", "Q": "N", "W": "P"
             },
             "m_type_mapping": {
-                "B": "B", "C": "C", "I": "D", "J": "F", "K": "E", 
-                "NO": "I", "P": "J", "Q": "K", "R": "L", "S": "M", "T": "N", "W": "H", "Z": "P"
+                "B": "Q", "C": "B", "D": "C", "J": "D", "L": "E", "K": "F",
+                "X": "H", "Q": "J", "R": "K", "S": "L", "T": "M", "U": "N", 
+                "W": "O", "AA": "P"
             },
             "c_type_mapping": {
-                "B": "B", "C": "C", "H": "D", "I": "F", "J": "E", 
-                "MN": "I", "O": "J", "P": "K", "Q": "L", "R": "M", "S": "N", "V": "H", "Y": "P"
+                "B": "Q", "C": "B", "D": "C", "I": "D", "J": "F", "K": "E", "P": "J",
+                "Q": "K", "R": "L", "S": "M", "T": "N", "V": "O", "W": "H", "Z": "P"
             },
             "column_delimiter": "-"
         },
@@ -88,6 +89,16 @@ class TSConverterConfig:
             "na_values": ["", "NA", "-"],
             "sd_identifier": "SD",
             "default_frequency": "Yearly"
+        },
+        "step6": {
+            "start_row": 11,
+            "article_list_column": "Q",
+            "header_row": 1,
+            "article_header_start_col": "R",
+            "match_marker": "X",
+            "match_modes": ["exact", "partial"],
+            "normalize_whitespace": True,
+            "case_sensitive": False
         },
         "file_formats": {
             "supported_extensions": [".xlsx"],
