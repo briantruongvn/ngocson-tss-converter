@@ -174,12 +174,12 @@ def render_progress_section(current_step: int = 0, step_status: Dict[str, str] =
     Render compact progress section with step indicators
     
     Args:
-        current_step: Current step number (0-5)
+        current_step: Current step number (0-6)
         step_status: Dict with step status ('pending', 'running', 'completed', 'error')
         compact: Whether to use compact mode for better space utilization
     """
     if step_status is None:
-        step_status = {f"step{i}": "pending" for i in range(1, 6)}
+        step_status = {f"step{i}": "pending" for i in range(1, 7)}
     
     container_class = "progress-container-compact" if compact else "progress-container"
     
@@ -196,11 +196,11 @@ def render_progress_section(current_step: int = 0, step_status: Dict[str, str] =
     running_steps = sum(1 for status in step_status.values() if status == "running")
     
     # Include partial progress for running step
-    progress_value = (completed_steps + (0.5 if running_steps > 0 else 0)) / 5
+    progress_value = (completed_steps + (0.5 if running_steps > 0 else 0)) / 6
     progress_percentage = int(progress_value * 100)
     
     # Compact progress bar
-    progress_text = f"📊 {progress_percentage}% ({completed_steps}/5 steps)"
+    progress_text = f"📊 {progress_percentage}% ({completed_steps}/6 steps)"
     st.progress(progress_value, text=progress_text)
     
     if compact:

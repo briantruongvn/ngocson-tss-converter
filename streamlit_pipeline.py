@@ -1,6 +1,6 @@
 """
 Streamlit Pipeline Integration for TSS Converter
-Wraps the existing 5-step pipeline with progress tracking and error handling.
+Wraps the existing 6-step pipeline with progress tracking and error handling.
 """
 
 import os
@@ -19,6 +19,7 @@ import step2_data_extraction
 import step3_data_mapping
 import step4_data_fill
 import step5_filter_deduplicate
+import step6_article_crossref
 from common.exceptions import TSConverterError
 from common.validation import FileValidator
 from common.quality_reporter import get_global_reporter, reset_global_reporter
@@ -101,7 +102,7 @@ class ProgressCallback:
     def __init__(self, update_func: Optional[Callable] = None):
         self.update_func = update_func
         self.current_step = 0
-        self.step_status = {f"step{i}": "pending" for i in range(1, 6)}
+        self.step_status = {f"step{i}": "pending" for i in range(1, 7)}
         self.start_time = time.time()
         
     def start_step(self, step_num: int, step_name: str):
@@ -264,7 +265,7 @@ class StreamlitTSSPipeline:
                         input_file_path: Path, 
                         progress_callback: Optional[ProgressCallback] = None) -> Tuple[bool, Path, Dict[str, Any]]:
         """
-        Run complete 5-step pipeline with progress tracking and security validation
+        Run complete 6-step pipeline with progress tracking and security validation
         
         Args:
             input_file_path: Path to input Excel file
@@ -356,13 +357,28 @@ class StreamlitTSSPipeline:
             logger.info(f"Starting Step 5 with input: {step4_output}")
             logger.info(f"Step 5 output directory: {output_dir}")
             
-            final_output = self._run_step5(step4_output, output_dir)
+            step5_output = self._run_step5(step4_output, output_dir)
             
-            logger.info(f"Step 5 final output: {final_output}")
+            logger.info(f"Step 5 output: {step5_output}")
             
             if progress_callback:
                 progress_callback.complete_step(5, "Filter & Deduplicate")
             self.processing_stats["steps_completed"] = 5
+            
+            # Step 6: Article Cross-Reference
+            if progress_callback:
+                progress_callback.start_step(6, "Article Cross-Reference")
+            
+            logger.info(f"Starting Step 6 with input: {step5_output}")
+            logger.info(f"Step 6 output directory: {output_dir}")
+            
+            final_output = self._run_step6(step5_output, output_dir)
+            
+            logger.info(f"Step 6 final output: {final_output}")
+            
+            if progress_callback:
+                progress_callback.complete_step(6, "Article Cross-Reference")
+            self.processing_stats["steps_completed"] = 6
             
             # Calculate final statistics
             end_time = time.time()
@@ -798,6 +814,89 @@ class StreamlitTSSPipeline:
         except Exception as e:
             logger.error(f"Step 5 processing error: {e}")
             raise TSConverterError(f"Step 5 failed: {str(e)}")
+    
+    def _run_step6(self, step5_output: Path, output_dir: Path) -> Path:
+        """Run Step 6: Article Cross-Reference with security validation"""
+        try:
+            # Security validation: validate all paths
+            for path in [step5_output, output_dir]:
+                if not validate_path_security(path, self.temp_dir):
+                    raise SecurityError(f"Path validation failed for {path}")
+            
+            # Create Step6 output directly in the session output directory
+            session_output_name = step5_output.name.replace(" - Step5.xlsx", " - Step6.xlsx")
+            if not session_output_name.endswith(" - Step6.xlsx"):
+                # Fallback if naming doesn't match expected pattern
+                session_output_name = step5_output.stem + " - Step6.xlsx"
+            
+            session_output = output_dir / session_output_name
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            logger.info(f"🚀 STEP 6 START: Processing {step5_output} -> {session_output}")
+            
+            # DETAILED LOGGING: Check initial state
+            logger.info(f"📁 Step5 input file exists: {step5_output.exists()}")
+            logger.info(f"📁 Step5 input file size: {step5_output.stat().st_size if step5_output.exists() else 'N/A'}")
+            logger.info(f"📁 Session output directory exists: {output_dir.exists()}")
+            logger.info(f"📁 Target session output path: {session_output}")
+            
+            # Ensure the session output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Initialize ArticleCrossReference
+            logger.info(f"🔧 Initializing ArticleCrossReference...")
+            crossref = step6_article_crossref.ArticleCrossReference()
+            logger.info(f"🔧 ArticleCrossReference initialized")
+            
+            try:
+                # CRITICAL: Pass the explicit session output path to process_file
+                logger.info(f"📞 Calling ArticleCrossReference.process_file with:")
+                logger.info(f"   📥 Input file: {step5_output}")
+                logger.info(f"   📤 Output file: {session_output}")
+                
+                # This should create the file directly at session_output location
+                logger.info(f"⚡ CALLING ArticleCrossReference.process_file...")
+                result_file = crossref.process_file(str(step5_output), str(session_output))
+                logger.info(f"✅ ArticleCrossReference.process_file completed successfully!")
+                logger.info(f"📝 ArticleCrossReference returned path: {result_file}")
+                
+                # Convert result to Path and verify
+                result_path = Path(result_file)
+                logger.info(f"🔍 Verifying result file:")
+                logger.info(f"   - Result path: {result_path}")
+                logger.info(f"   - File exists: {result_path.exists()}")
+                
+                if result_path.exists():
+                    file_size = result_path.stat().st_size
+                    logger.info(f"✅ Step 6 output verified at: {result_path}")
+                    logger.info(f"   - File size: {file_size} bytes")
+                    logger.info(f"   - Setting file permissions...")
+                    result_path.chmod(0o600)
+                    logger.info(f"🎉 Step 6 completed successfully: {result_path}")
+                    return result_path
+                else:
+                    raise TSConverterError(f"ArticleCrossReference claimed success but file not found: {result_path}")
+                    
+            except Exception as e:
+                logger.error(f"❌ ArticleCrossReference processing failed!")
+                logger.error(f"   - Exception: {e}")
+                logger.error(f"   - Exception type: {type(e).__name__}")
+                
+                # Import traceback for full stack trace
+                import traceback
+                logger.error(f"   - Full traceback:\n{traceback.format_exc()}")
+                
+                raise TSConverterError(f"Step 6 processing failed: {str(e)}")
+            
+        except SecurityError:
+            raise
+        except FileNotFoundError as e:
+            logger.error(f"Step 6 file not found: {e}")
+            raise TSConverterError(f"Step 6 failed - output file not found: {str(e)}")
+        except Exception as e:
+            logger.error(f"Step 6 processing error: {e}")
+            raise TSConverterError(f"Step 6 failed: {str(e)}")
     
     def _extract_step5_stats(self, output_file: Path):
         """Extract statistics from Step 5 output for display with security validation"""

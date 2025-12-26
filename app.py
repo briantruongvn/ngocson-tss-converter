@@ -50,7 +50,7 @@ def initialize_session_state():
                 'processing': False,
                 'progress_data': {
                     "current_step": 0,
-                    "step_status": {f"step{i}": "pending" for i in range(1, 6)},
+                    "step_status": {f"step{i}": "pending" for i in range(1, 7)},
                     "message": "Sẵn sàng xử lý",
                     "error": False
                 },
@@ -123,8 +123,8 @@ def process_file_sync(file_data: bytes, filename: str):
                 # Update UI
                 with progress_placeholder.container():
                     completed_steps = sum(1 for status in progress_data.get("step_status", {}).values() if status == "completed")
-                    progress_percentage = int((completed_steps / 5) * 100)
-                    st.progress(completed_steps / 5, text=f"📊 Progress: {progress_percentage}% ({completed_steps}/5 steps completed)")
+                    progress_percentage = int((completed_steps / 6) * 100)
+                    st.progress(completed_steps / 6, text=f"📊 Progress: {progress_percentage}% ({completed_steps}/6 steps completed)")
                     
             except Exception as e:
                 logger.warning(f"Progress update error: {e}")
@@ -281,7 +281,7 @@ def main():
                         'processing_start_time': time.time(),
                         'progress_data': {
                             "current_step": 0,
-                            "step_status": {f"step{i}": "pending" for i in range(1, 6)},
+                            "step_status": {f"step{i}": "pending" for i in range(1, 7)},
                             "message": "Starting processing...",
                             "error": False
                         }
@@ -363,7 +363,7 @@ def main():
                             'processing_stats': {},
                             'progress_data': {
                                 "current_step": 0,
-                                "step_status": {f"step{i}": "pending" for i in range(1, 6)},
+                                "step_status": {f"step{i}": "pending" for i in range(1, 7)},
                                 "message": "Ready to process",
                                 "error": False
                             }
