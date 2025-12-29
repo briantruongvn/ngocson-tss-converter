@@ -655,62 +655,58 @@ class StreamlitTSSPipeline:
             # But we have step2_output in a different location, so we need to ensure
             # the mapper can find it. We'll use a custom approach:
             
-            # OPTION 1: Try letting mapper auto-detect (may fail in temp env)
+            # Direct approach: Use actual step2_output location for DataMapper
             try:
-                mapper = step3_data_mapping.DataMapper(base_dir=str(output_dir))
-                output_file = mapper.process_file(str(source_file), str(session_output))
+                # Get source file base name for expected Step2 filename
+                source_base_name = source_file.stem.replace(" - Copy", "").replace(" - copy", "")
                 
-                # Verify output was created at expected location
-                output_path = Path(output_file)
-                if output_path.exists() and output_path == session_output:
-                    logger.info(f"Step 3 completed successfully (auto-detection): {session_output}")
-                    session_output.chmod(0o600)  # Secure file permissions
-                    return session_output
-                else:
-                    raise TSConverterError("Auto-detection failed, trying manual approach")
-                    
-            except Exception as auto_error:
-                logger.warning(f"Step 3 auto-detection failed: {auto_error}, trying manual approach")
+                # Get step2 file name and ensure it's in the same directory as session_output
+                step2_name = step2_output.name
+                expected_step2_path = output_dir / step2_name
                 
-                # OPTION 2: Manual approach - create expected step2 filename in temp dir
-                try:
-                    # Get source file base name for expected Step2 filename
-                    source_base_name = source_file.stem.replace(" - Copy", "").replace(" - copy", "")
-                    expected_step2_name = f"{source_base_name} - Step2.xlsx"
-                    expected_step2_path = output_dir / expected_step2_name
-                    
-                    # Copy step2_output to expected location temporarily if needed
-                    temp_step2_created = False
-                    if not expected_step2_path.exists() or expected_step2_path != step2_output:
+                # Copy step2_output to expected location if it's not already there
+                temp_step2_created = False
+                if step2_output != expected_step2_path:
+                    if not expected_step2_path.exists():
                         shutil.copy2(str(step2_output), str(expected_step2_path))
                         temp_step2_created = True
-                        logger.info(f"Created temporary Step2 file for auto-detection: {expected_step2_path}")
-                    
-                    # Now try mapping with correct setup
-                    mapper = step3_data_mapping.DataMapper(base_dir=str(output_dir))
-                    output_file = mapper.process_file(str(source_file), str(session_output))
-                    
-                    # Clean up temporary file if we created it
-                    if temp_step2_created and expected_step2_path.exists() and expected_step2_path != step2_output:
-                        expected_step2_path.unlink(missing_ok=True)
-                        logger.info(f"Cleaned up temporary Step2 file: {expected_step2_path}")
-                    
-                    # Verify output
-                    output_path = Path(output_file)
-                    if output_path.exists():
-                        # Ensure output is at session location
-                        if output_path != session_output:
-                            shutil.move(str(output_path), str(session_output))
-                            
-                        session_output.chmod(0o600)  # Secure file permissions
-                        logger.info(f"Step 3 completed successfully (manual approach): {session_output}")
-                        return session_output
+                        logger.info(f"Copied Step2 file for mapping: {step2_output} -> {expected_step2_path}")
                     else:
-                        raise TSConverterError(f"Step 3 output not created: {output_path}")
+                        logger.info(f"Step2 file already exists at expected location: {expected_step2_path}")
+                
+                # Use DataMapper with session output directory as base
+                # This prevents double output directory creation
+                parent_dir = output_dir.parent  # Go up one level to avoid double output
+                mapper = step3_data_mapping.DataMapper(base_dir=str(parent_dir))
+                
+                # Process with explicit output file path
+                output_file = mapper.process_file(str(source_file), str(session_output))
+                
+                # Clean up temporary file if we created it
+                if temp_step2_created and expected_step2_path.exists() and expected_step2_path != step2_output:
+                    expected_step2_path.unlink(missing_ok=True)
+                    logger.info(f"Cleaned up temporary Step2 file: {expected_step2_path}")
+                
+                # Verify output
+                output_path = Path(output_file)
+                if output_path.exists():
+                    # Ensure output is at session location
+                    if output_path != session_output:
+                        shutil.move(str(output_path), str(session_output))
+                        logger.info(f"Moved Step3 output to session location: {output_path} -> {session_output}")
                         
-                except Exception as manual_error:
-                    logger.error(f"Both auto-detection and manual approach failed: {manual_error}")
-                    raise TSConverterError(f"Step 3 mapping failed: {str(manual_error)}")
+                    session_output.chmod(0o600)  # Secure file permissions
+                    logger.info(f"Step 3 completed successfully: {session_output}")
+                    return session_output
+                else:
+                    raise TSConverterError(f"Step 3 output not created: {output_path}")
+                    
+            except Exception as e:
+                logger.error(f"Step 3 processing failed: {e}")
+                logger.error(f"Debug info - step2_output: {step2_output}")
+                logger.error(f"Debug info - output_dir: {output_dir}")
+                logger.error(f"Debug info - session_output: {session_output}")
+                raise TSConverterError(f"Step 3 failed: {str(e)}")
             
         except SecurityError:
             raise
