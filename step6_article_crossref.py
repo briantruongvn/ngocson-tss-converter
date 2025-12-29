@@ -301,7 +301,7 @@ class ArticleCrossReference:
         # Auto-generate output file if not provided
         if output_file is None:
             base_name = step5_path.stem.replace(" - Step5", "")
-            output_file = self.output_dir / f"{base_name} - Step6.xlsx"
+            output_file = self.output_dir / f"Standard Internal TSS - {base_name}.xlsx"
         else:
             output_file = Path(output_file)
         

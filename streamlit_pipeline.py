@@ -895,11 +895,9 @@ class StreamlitTSSPipeline:
                 if not validate_path_security(path, self.temp_dir):
                     raise SecurityError(f"Path validation failed for {path}")
             
-            # Create Step6 output directly in the session output directory
-            session_output_name = step5_output.name.replace(" - Step5.xlsx", " - Step6.xlsx")
-            if not session_output_name.endswith(" - Step6.xlsx"):
-                # Fallback if naming doesn't match expected pattern
-                session_output_name = step5_output.stem + " - Step6.xlsx"
+            # Create Step6 output with descriptive name in the session output directory
+            base_name = step5_output.stem.replace(" - Step5", "")
+            session_output_name = f"Standard Internal TSS - {base_name}.xlsx"
             
             session_output = output_dir / session_output_name
             if not validate_path_security(session_output, self.temp_dir):
