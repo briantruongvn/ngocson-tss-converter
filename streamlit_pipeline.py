@@ -551,7 +551,7 @@ class StreamlitTSSPipeline:
             raise TSConverterError(f"Step 1 failed: {str(e)}")
     
     def _run_step2(self, step1_output: Path, source_file: Path, output_dir: Path) -> Path:
-        """Run Step 2: Data Extraction with graceful fallbacks and retry logic"""
+        """Run Step 2: Data Extraction using new M-Textile logic with article headers in columns"""
         # Validate all paths for security
         for path in [step1_output, source_file, output_dir]:
             if not validate_path_security(path, self.temp_dir):
@@ -561,11 +561,11 @@ class StreamlitTSSPipeline:
             try:
                 extractor = step2_data_extraction.DataExtractor()
                 
-                # Use graceful fallback processing to handle missing headers and formula errors
-                output_file = extractor.process_file_with_fallbacks(
+                # Use NEW M-Textile logic that places article headers in columns R-Y
+                logger.info(f"Using M-Textile extraction logic for Step 2")
+                output_file = extractor.process_m_textile_file(
                     str(step1_output), 
-                    str(source_file),
-                    allow_missing_headers=True
+                    str(source_file)
                 )
                 
                 # Move output to session output directory
@@ -576,17 +576,20 @@ class StreamlitTSSPipeline:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(output_path, session_output)
                 
-                logger.info(f"Step 2 completed successfully (with graceful fallbacks): {session_output}")
+                logger.info(f"Step 2 completed successfully (M-Textile logic): {session_output}")
                 return session_output
                 
             except Exception as e:
-                logger.error(f"Step 2 error: {str(e)}")
+                logger.error(f"Step 2 M-Textile processing error: {str(e)}")
                 
-                # Try fallback to regular processing if graceful processing fails
+                # Try fallback to graceful processing if M-Textile processing fails
                 try:
-                    logger.info("Attempting fallback to regular processing...")
-                    extractor = step2_data_extraction.DataExtractor()
-                    output_file = extractor.process_file(str(step1_output), str(source_file))
+                    logger.info("Attempting fallback to graceful processing...")
+                    output_file = extractor.process_file_with_fallbacks(
+                        str(step1_output), 
+                        str(source_file),
+                        allow_missing_headers=True
+                    )
                     
                     output_path = Path(output_file)
                     session_output = output_dir / output_path.name
@@ -594,17 +597,34 @@ class StreamlitTSSPipeline:
                     rm.add_temp_file(output_path)
                     shutil.copy2(output_path, session_output)
                     
-                    logger.info(f"Step 2 completed with fallback processing: {session_output}")
+                    logger.warning(f"Step 2 completed with graceful fallback (article headers may not be in columns): {session_output}")
                     return session_output
                     
                 except Exception as fallback_error:
-                    logger.error(f"Both graceful and fallback processing failed: {fallback_error}")
-                    # Add error context for monitoring
-                    global_error_handler._handle_final_error(
-                        fallback_error, "step2_data_extraction", 
-                        {'temp_files': [str(step1_output), str(source_file)]}
-                    )
-                    raise TSConverterError(f"Data extraction failed: {str(e)}")
+                    logger.error(f"Both M-Textile and graceful processing failed: {fallback_error}")
+                    
+                    # Try final fallback to regular processing
+                    try:
+                        logger.info("Attempting final fallback to regular processing...")
+                        output_file = extractor.process_file(str(step1_output), str(source_file))
+                        
+                        output_path = Path(output_file)
+                        session_output = output_dir / output_path.name
+                        
+                        rm.add_temp_file(output_path)
+                        shutil.copy2(output_path, session_output)
+                        
+                        logger.warning(f"Step 2 completed with final fallback (article headers may not be in columns): {session_output}")
+                        return session_output
+                        
+                    except Exception as final_error:
+                        logger.error(f"All Step 2 processing methods failed: {final_error}")
+                        # Add error context for monitoring
+                        global_error_handler._handle_final_error(
+                            final_error, "step2_data_extraction", 
+                            {'temp_files': [str(step1_output), str(source_file)]}
+                        )
+                        raise TSConverterError(f"Data extraction failed: {str(e)}")
                 
                 # Add error context for monitoring
                 global_error_handler._handle_final_error(
@@ -614,32 +634,88 @@ class StreamlitTSSPipeline:
                 raise TSConverterError(f"Data extraction failed: {str(e)}")
     
     def _run_step3(self, source_file: Path, step2_output: Path, output_dir: Path) -> Path:
-        """Run Step 3: Data Mapping with security validation"""
+        """Run Step 3: Data Mapping with security validation and proper parameter handling"""
         try:
             # Security validation: validate all paths
             for path in [source_file, step2_output, output_dir]:
                 if not validate_path_security(path, self.temp_dir):
                     raise SecurityError(f"Path validation failed for {path}")
-                    
-            mapper = step3_data_mapping.DataMapper()
-            output_file = mapper.process_file(str(source_file), str(step2_output))
             
-            # Move output to session output directory with validation
-            output_path = Path(output_file)
-            if not validate_path_security(output_path, Path.cwd()):
-                raise SecurityError(f"Generated output path validation failed: {output_path}")
-                
-            session_output = output_dir / output_path.name
+            # Create Step3 output path in session directory
+            session_output_name = step2_output.name.replace(" - Step2.xlsx", " - Step3.xlsx")
+            if not session_output_name.endswith(" - Step3.xlsx"):
+                # Fallback if naming doesn't match expected pattern
+                session_output_name = step2_output.stem + " - Step3.xlsx"
+            
+            session_output = output_dir / session_output_name
             if not validate_path_security(session_output, self.temp_dir):
                 raise SecurityError(f"Session output path validation failed: {session_output}")
-                
-            shutil.move(output_path, session_output)
-            session_output.chmod(0o600)  # Secure file permissions
             
-            return session_output
+            # DataMapper expects to auto-detect step2 file based on input file name
+            # But we have step2_output in a different location, so we need to ensure
+            # the mapper can find it. We'll use a custom approach:
+            
+            # OPTION 1: Try letting mapper auto-detect (may fail in temp env)
+            try:
+                mapper = step3_data_mapping.DataMapper(base_dir=str(output_dir))
+                output_file = mapper.process_file(str(source_file), str(session_output))
+                
+                # Verify output was created at expected location
+                output_path = Path(output_file)
+                if output_path.exists() and output_path == session_output:
+                    logger.info(f"Step 3 completed successfully (auto-detection): {session_output}")
+                    session_output.chmod(0o600)  # Secure file permissions
+                    return session_output
+                else:
+                    raise TSConverterError("Auto-detection failed, trying manual approach")
+                    
+            except Exception as auto_error:
+                logger.warning(f"Step 3 auto-detection failed: {auto_error}, trying manual approach")
+                
+                # OPTION 2: Manual approach - create expected step2 filename in temp dir
+                try:
+                    # Get source file base name for expected Step2 filename
+                    source_base_name = source_file.stem.replace(" - Copy", "").replace(" - copy", "")
+                    expected_step2_name = f"{source_base_name} - Step2.xlsx"
+                    expected_step2_path = output_dir / expected_step2_name
+                    
+                    # Copy step2_output to expected location temporarily if needed
+                    temp_step2_created = False
+                    if not expected_step2_path.exists() or expected_step2_path != step2_output:
+                        shutil.copy2(str(step2_output), str(expected_step2_path))
+                        temp_step2_created = True
+                        logger.info(f"Created temporary Step2 file for auto-detection: {expected_step2_path}")
+                    
+                    # Now try mapping with correct setup
+                    mapper = step3_data_mapping.DataMapper(base_dir=str(output_dir))
+                    output_file = mapper.process_file(str(source_file), str(session_output))
+                    
+                    # Clean up temporary file if we created it
+                    if temp_step2_created and expected_step2_path.exists() and expected_step2_path != step2_output:
+                        expected_step2_path.unlink(missing_ok=True)
+                        logger.info(f"Cleaned up temporary Step2 file: {expected_step2_path}")
+                    
+                    # Verify output
+                    output_path = Path(output_file)
+                    if output_path.exists():
+                        # Ensure output is at session location
+                        if output_path != session_output:
+                            shutil.move(str(output_path), str(session_output))
+                            
+                        session_output.chmod(0o600)  # Secure file permissions
+                        logger.info(f"Step 3 completed successfully (manual approach): {session_output}")
+                        return session_output
+                    else:
+                        raise TSConverterError(f"Step 3 output not created: {output_path}")
+                        
+                except Exception as manual_error:
+                    logger.error(f"Both auto-detection and manual approach failed: {manual_error}")
+                    raise TSConverterError(f"Step 3 mapping failed: {str(manual_error)}")
+            
         except SecurityError:
             raise
         except Exception as e:
+            logger.error(f"Step 3 processing error: {e}")
             raise TSConverterError(f"Step 3 failed: {str(e)}")
     
     def _run_step4(self, step3_output: Path, output_dir: Path) -> Path:
