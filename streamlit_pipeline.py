@@ -533,10 +533,14 @@ class StreamlitTSSPipeline:
             # Set restrictive file permissions
             input_file_path.chmod(0o600)
             
-            # Step 7: Update session state safely
+            # Step 7: Update session state safely while preserving original_filename
+            # Get current uploaded_file_info to preserve original_filename if it exists
+            current_uploaded_info = safe_get_session_value('uploaded_file_info', {})
+            preserved_original_filename = current_uploaded_info.get('original_filename', filename)
+            
             safe_update_session_state({
                 'uploaded_file_info': {
-                    'original_filename': filename,
+                    'original_filename': preserved_original_filename,  # Preserve original filename
                     'safe_filename': safe_filename,
                     'file_path': str(input_file_path),
                     'file_size': len(file_data),
