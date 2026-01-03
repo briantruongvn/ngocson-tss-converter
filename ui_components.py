@@ -322,15 +322,27 @@ def render_download_section(output_file_path: Optional[Union[str, Path]] = None,
             original_name = None
             try:
                 uploaded_file_info = safe_get_session_value('uploaded_file_info', {})
+                
+                # DEBUG: Log detailed session state info
+                logger.info(f"🔍 DEBUG - uploaded_file_info type: {type(uploaded_file_info)}")
+                logger.info(f"🔍 DEBUG - uploaded_file_info content: {uploaded_file_info}")
+                if uploaded_file_info:
+                    logger.info(f"🔍 DEBUG - uploaded_file_info keys: {list(uploaded_file_info.keys())}")
+                    logger.info(f"🔍 DEBUG - has original_filename: {'original_filename' in uploaded_file_info}")
+                    if 'original_filename' in uploaded_file_info:
+                        logger.info(f"🔍 DEBUG - original_filename value: {uploaded_file_info.get('original_filename')!r}")
+                
                 if uploaded_file_info and 'original_filename' in uploaded_file_info:
                     original_name = uploaded_file_info['original_filename']
                     logger.info(f"📥 Got original filename from session: {original_name}")
                 else:
                     # Fallback to extracting from output file path
+                    logger.warning(f"⚠️ original_filename not found in uploaded_file_info, using fallback")
                     original_name = get_clean_basename(file_path) if file_path else None
                     logger.info(f"📥 Extracted original name from file path (fallback): {original_name}")
             except Exception as e:
-                logger.warning(f"⚠️ Could not get original filename from session: {e}")
+                logger.error(f"❌ Error accessing session state: {e}")
+                logger.error(f"   Exception type: {type(e).__name__}")
                 # Fallback to extracting from output file path
                 original_name = get_clean_basename(file_path) if file_path else None
                 logger.info(f"📥 Extracted original name from file path (fallback): {original_name}")
