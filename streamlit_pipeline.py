@@ -289,7 +289,7 @@ class StreamlitTSSPipeline:
             if not validate_path_security(session_output, self.temp_dir):
                 raise SecurityError(f"Session output path validation failed: {session_output}")
             
-            # DataMapper auto-detects step3 file, so we need to ensure it's findable
+            # DataMapper auto-detects Step2 template, so we need to ensure Step3 is accessible
             # Copy step3_output to expected location if needed
             step3_name = step3_output.name
             expected_step3_path = output_dir / step3_name
@@ -298,15 +298,16 @@ class StreamlitTSSPipeline:
             if step3_output != expected_step3_path and not expected_step3_path.exists():
                 shutil.copy2(str(step3_output), str(expected_step3_path))
                 temp_step3_created = True
-                logger.info(f"Copied Step3 file for CLI detection: {step3_output} -> {expected_step3_path}")
+                logger.info(f"Copied Step3 file for processing: {step3_output} -> {expected_step3_path}")
             
             # Ensure output directory exists
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # Direct CLI module call - Single source of truth!
+            # Step 4 DataMapper expects Step3 output as input (not source_file)
             parent_dir = output_dir.parent  # Avoid double output directory
             mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
-            cli_result = mapper.process_file(str(source_file), str(session_output))
+            cli_result = mapper.process_file(str(step3_output), str(session_output))
             
             # Clean up temporary file if created
             if temp_step3_created and expected_step3_path.exists():
