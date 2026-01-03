@@ -16,8 +16,8 @@ import traceback
 # Import existing pipeline modules (they use function-based approach)
 import step1_template_creation
 import step2_data_extraction
-import step3_data_mapping
-import step4_data_fill
+import step3_pre_mapping_fill
+import step4_data_mapping
 import step5_filter_deduplicate
 import step6_article_crossref
 from common.exceptions import TSConverterError
@@ -677,7 +677,7 @@ class StreamlitTSSPipeline:
                 # Use DataMapper with session output directory as base
                 # This prevents double output directory creation
                 parent_dir = output_dir.parent  # Go up one level to avoid double output
-                mapper = step3_data_mapping.DataMapper(base_dir=str(parent_dir))
+                mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
                 
                 # Process with explicit output file path
                 output_file = mapper.process_file(str(source_file), str(session_output))
@@ -722,7 +722,7 @@ class StreamlitTSSPipeline:
                 if not validate_path_security(path, self.temp_dir):
                     raise SecurityError(f"Path validation failed for {path}")
                     
-            filler = step4_data_fill.DataFiller()
+            filler = step3_pre_mapping_fill.PreMappingFiller()
             output_file = filler.process_file(str(step3_output))
             
             # Move output to session output directory with validation
