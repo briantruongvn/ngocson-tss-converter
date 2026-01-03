@@ -330,24 +330,24 @@ class StreamlitTSSPipeline:
                 progress_callback.complete_step(2, "Extract Data")
             self.processing_stats["steps_completed"] = 2
             
-            # Step 3: Data Mapping
+            # Step 3: Pre-mapping Fill
             if progress_callback:
-                progress_callback.start_step(3, "Map Data")
+                progress_callback.start_step(3, "Pre-mapping Fill")
             
-            step3_output = self._run_step3(input_file_path, step2_output, output_dir)
+            step3_output = self._run_step3(step2_output, output_dir)
             
             if progress_callback:
-                progress_callback.complete_step(3, "Map Data")
+                progress_callback.complete_step(3, "Pre-mapping Fill")
             self.processing_stats["steps_completed"] = 3
             
-            # Step 4: Data Fill
+            # Step 4: Data Mapping
             if progress_callback:
-                progress_callback.start_step(4, "Fill Data")
+                progress_callback.start_step(4, "Data Mapping")
             
-            step4_output = self._run_step4(step3_output, output_dir)
+            step4_output = self._run_step4(input_file_path, step3_output, output_dir)
             
             if progress_callback:
-                progress_callback.complete_step(4, "Fill Data")
+                progress_callback.complete_step(4, "Data Mapping")
             self.processing_stats["steps_completed"] = 4
             
             # Step 5: Filter & Deduplicate
@@ -633,97 +633,16 @@ class StreamlitTSSPipeline:
                 )
                 raise TSConverterError(f"Data extraction failed: {str(e)}")
     
-    def _run_step3(self, source_file: Path, step2_output: Path, output_dir: Path) -> Path:
-        """Run Step 3: Data Mapping with security validation and proper parameter handling"""
+    def _run_step3(self, step2_output: Path, output_dir: Path) -> Path:
+        """Run Step 3: Pre-mapping Fill with security validation (matches CLI step3_pre_mapping_fill.py)"""
         try:
             # Security validation: validate all paths
-            for path in [source_file, step2_output, output_dir]:
-                if not validate_path_security(path, self.temp_dir):
-                    raise SecurityError(f"Path validation failed for {path}")
-            
-            # Create Step3 output path in session directory
-            session_output_name = step2_output.name.replace(" - Step2.xlsx", " - Step3.xlsx")
-            if not session_output_name.endswith(" - Step3.xlsx"):
-                # Fallback if naming doesn't match expected pattern
-                session_output_name = step2_output.stem + " - Step3.xlsx"
-            
-            session_output = output_dir / session_output_name
-            if not validate_path_security(session_output, self.temp_dir):
-                raise SecurityError(f"Session output path validation failed: {session_output}")
-            
-            # DataMapper expects to auto-detect step2 file based on input file name
-            # But we have step2_output in a different location, so we need to ensure
-            # the mapper can find it. We'll use a custom approach:
-            
-            # Direct approach: Use actual step2_output location for DataMapper
-            try:
-                # Get source file base name for expected Step2 filename
-                source_base_name = source_file.stem.replace(" - Copy", "").replace(" - copy", "")
-                
-                # Get step2 file name and ensure it's in the same directory as session_output
-                step2_name = step2_output.name
-                expected_step2_path = output_dir / step2_name
-                
-                # Copy step2_output to expected location if it's not already there
-                temp_step2_created = False
-                if step2_output != expected_step2_path:
-                    if not expected_step2_path.exists():
-                        shutil.copy2(str(step2_output), str(expected_step2_path))
-                        temp_step2_created = True
-                        logger.info(f"Copied Step2 file for mapping: {step2_output} -> {expected_step2_path}")
-                    else:
-                        logger.info(f"Step2 file already exists at expected location: {expected_step2_path}")
-                
-                # Use DataMapper with session output directory as base
-                # This prevents double output directory creation
-                parent_dir = output_dir.parent  # Go up one level to avoid double output
-                mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
-                
-                # Process with explicit output file path
-                output_file = mapper.process_file(str(source_file), str(session_output))
-                
-                # Clean up temporary file if we created it
-                if temp_step2_created and expected_step2_path.exists() and expected_step2_path != step2_output:
-                    expected_step2_path.unlink(missing_ok=True)
-                    logger.info(f"Cleaned up temporary Step2 file: {expected_step2_path}")
-                
-                # Verify output
-                output_path = Path(output_file)
-                if output_path.exists():
-                    # Ensure output is at session location
-                    if output_path != session_output:
-                        shutil.move(str(output_path), str(session_output))
-                        logger.info(f"Moved Step3 output to session location: {output_path} -> {session_output}")
-                        
-                    session_output.chmod(0o600)  # Secure file permissions
-                    logger.info(f"Step 3 completed successfully: {session_output}")
-                    return session_output
-                else:
-                    raise TSConverterError(f"Step 3 output not created: {output_path}")
-                    
-            except Exception as e:
-                logger.error(f"Step 3 processing failed: {e}")
-                logger.error(f"Debug info - step2_output: {step2_output}")
-                logger.error(f"Debug info - output_dir: {output_dir}")
-                logger.error(f"Debug info - session_output: {session_output}")
-                raise TSConverterError(f"Step 3 failed: {str(e)}")
-            
-        except SecurityError:
-            raise
-        except Exception as e:
-            logger.error(f"Step 3 processing error: {e}")
-            raise TSConverterError(f"Step 3 failed: {str(e)}")
-    
-    def _run_step4(self, step3_output: Path, output_dir: Path) -> Path:
-        """Run Step 4: Data Fill with security validation"""
-        try:
-            # Security validation: validate all paths
-            for path in [step3_output, output_dir]:
+            for path in [step2_output, output_dir]:
                 if not validate_path_security(path, self.temp_dir):
                     raise SecurityError(f"Path validation failed for {path}")
                     
             filler = step3_pre_mapping_fill.PreMappingFiller()
-            output_file = filler.process_file(str(step3_output))
+            output_file = filler.process_file(str(step2_output))
             
             # Move output to session output directory with validation
             output_path = Path(output_file)
@@ -737,10 +656,88 @@ class StreamlitTSSPipeline:
             shutil.move(output_path, session_output)
             session_output.chmod(0o600)  # Secure file permissions
             
+            logger.info(f"Step 3 (Pre-mapping Fill) completed successfully: {session_output}")
             return session_output
         except SecurityError:
             raise
         except Exception as e:
+            raise TSConverterError(f"Step 3 failed: {str(e)}")
+    
+    def _run_step4(self, source_file: Path, step3_output: Path, output_dir: Path) -> Path:
+        """Run Step 4: Data Mapping with security validation (matches CLI step4_data_mapping.py)"""
+        try:
+            # Security validation: validate all paths
+            for path in [source_file, step3_output, output_dir]:
+                if not validate_path_security(path, self.temp_dir):
+                    raise SecurityError(f"Path validation failed for {path}")
+            
+            # Create Step4 output path in session directory
+            session_output_name = step3_output.name.replace(" - Step3.xlsx", " - Step4.xlsx")
+            if not session_output_name.endswith(" - Step4.xlsx"):
+                # Fallback if naming doesn't match expected pattern
+                session_output_name = step3_output.stem + " - Step4.xlsx"
+            
+            session_output = output_dir / session_output_name
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            # DataMapper expects to auto-detect step3 file based on input file name
+            # But we have step3_output in a different location, so we need to ensure
+            # the mapper can find it. We'll use a custom approach:
+            
+            try:
+                # Get step3 file name and ensure it's in the same directory as session_output
+                step3_name = step3_output.name
+                expected_step3_path = output_dir / step3_name
+                
+                # Copy step3_output to expected location if it's not already there
+                temp_step3_created = False
+                if step3_output != expected_step3_path:
+                    if not expected_step3_path.exists():
+                        shutil.copy2(str(step3_output), str(expected_step3_path))
+                        temp_step3_created = True
+                        logger.info(f"Copied Step3 file for mapping: {step3_output} -> {expected_step3_path}")
+                    else:
+                        logger.info(f"Step3 file already exists at expected location: {expected_step3_path}")
+                
+                # Use DataMapper with session output directory as base
+                # This prevents double output directory creation
+                parent_dir = output_dir.parent  # Go up one level to avoid double output
+                mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
+                
+                # Process with explicit output file path
+                output_file = mapper.process_file(str(source_file), str(session_output))
+                
+                # Clean up temporary file if we created it
+                if temp_step3_created and expected_step3_path.exists() and expected_step3_path != step3_output:
+                    expected_step3_path.unlink(missing_ok=True)
+                    logger.info(f"Cleaned up temporary Step3 file: {expected_step3_path}")
+                
+                # Verify output
+                output_path = Path(output_file)
+                if output_path.exists():
+                    # Ensure output is at session location
+                    if output_path != session_output:
+                        shutil.move(str(output_path), str(session_output))
+                        logger.info(f"Moved Step4 output to session location: {output_path} -> {session_output}")
+                        
+                    session_output.chmod(0o600)  # Secure file permissions
+                    logger.info(f"Step 4 (Data Mapping) completed successfully: {session_output}")
+                    return session_output
+                else:
+                    raise TSConverterError(f"Step 4 output not created: {output_path}")
+                    
+            except Exception as e:
+                logger.error(f"Step 4 processing failed: {e}")
+                logger.error(f"Debug info - step3_output: {step3_output}")
+                logger.error(f"Debug info - output_dir: {output_dir}")
+                logger.error(f"Debug info - session_output: {session_output}")
+                raise TSConverterError(f"Step 4 failed: {str(e)}")
+            
+        except SecurityError:
+            raise
+        except Exception as e:
+            logger.error(f"Step 4 processing error: {e}")
             raise TSConverterError(f"Step 4 failed: {str(e)}")
     
     def _run_step5(self, step4_output: Path, output_dir: Path) -> Path:

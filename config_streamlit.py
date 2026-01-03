@@ -1009,16 +1009,16 @@ STEP_CONFIG = {
         "estimated_time": "10-30 seconds"
     },
     "step3": {
-        "name": "Map Data",
-        "description": "Map data according to business logic",
-        "icon": "🗂️",
-        "estimated_time": "15-45 seconds"
-    },
-    "step4": {
-        "name": "Fill Data",
+        "name": "Pre-mapping Fill",
         "description": "Fill data using vertical inheritance",
         "icon": "📝",
         "estimated_time": "5-15 seconds"
+    },
+    "step4": {
+        "name": "Data Mapping",
+        "description": "Map data according to business logic",
+        "icon": "🗂️",
+        "estimated_time": "15-45 seconds"
     },
     "step5": {
         "name": "Filter & Deduplicate",
