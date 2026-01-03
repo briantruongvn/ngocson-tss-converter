@@ -1,80 +1,118 @@
 # Excel Template Converter - TSS Converter System
 
 ## 🎯 Tổng quan
-Hệ thống Python chuyên nghiệp để chuyển đổi Excel files từ format tùy ý sang template chuẩn TSS (Technical Specification System). Bao gồm 5 steps tự động với validation toàn diện, error handling robust và configuration management.
+Hệ thống Python chuyên nghiệp để chuyển đổi Excel files từ format tùy ý sang template chuẩn TSS (Technical Specification System). Bao gồm 5-step automated pipeline với Streamlit web interface, comprehensive validation, error handling robust và security features.
 
 ## ⚡ Chức năng chính
-- **5-step automated pipeline**: Template → Extract → Map → Fill → Filter
-- **Robust validation framework** với custom exceptions
-- **Configuration management** với JSON config và environment variables
-- **Comprehensive error handling** và detailed logging
-- **File format validation** strict (.xlsx only)
-- **Batch processing** support
-- **Professional output** với 17-column standardized format
+- **5-step automated pipeline**: Template → Extract → Pre-mapping Fill → Data Mapping → Filter & Deduplicate
+- **Web Interface**: Streamlit-based với real-time progress tracking
+- **Security framework** với file validation và secure session management
+- **Robust error handling** với custom exceptions và graceful degradation
+- **File format validation** strict (.xlsx only, max 50MB)
+- **Session-based processing** với temporary file management
+- **Professional output** với standardized filename format
 
 ## 🏗️ Kiến trúc hệ thống
 
 ### Core Components
 ```
 TSS Converter/
-├── step1_template_creation.py    # Template generation với formatting
-├── step2_data_extraction.py      # Article data extraction từ source
-├── step3_pre_mapping_fill.py     # Pre-mapping data fill và business logic  
-├── step4_data_fill.py            # Vertical inheritance filling
-├── step5_filter_deduplicate.py   # NA filtering và SD deduplication
-├── common/
-│   ├── exceptions.py             # Custom exception framework
-│   ├── validation.py             # File & structure validation
-│   └── config.py                 # Configuration management
-├── tsconverter.example.json      # Sample configuration
-└── YEU_CAU_FILE_INPUT.md        # Input requirements documentation
+├── 🌐 Web Interface
+│   ├── app.py                    # Main Streamlit application
+│   ├── ui_components.py          # Reusable UI components
+│   ├── config_streamlit.py       # Streamlit configuration
+│   └── streamlit_pipeline.py     # Pipeline integration
+│
+├── 🛠️ Processing Pipeline
+│   ├── step1_template_creation.py    # Template generation với formatting
+│   ├── step2_data_extraction.py      # Article data extraction từ source
+│   ├── step3_pre_mapping_fill.py     # Pre-mapping data fill và business logic
+│   ├── step4_data_mapping.py         # Data mapping với business logic
+│   ├── step5_filter_deduplicate.py   # NA filtering và SD deduplication
+│   └── step6_article_crossref.py     # Article cross-reference (optional)
+│
+├── 🔧 Common Utilities
+│   ├── common/config.py          # Configuration management
+│   ├── common/exceptions.py      # Custom exception framework
+│   ├── common/validation.py      # File & structure validation
+│   ├── common/security.py        # Security utilities
+│   ├── common/session_manager.py # Session state management
+│   ├── common/error_handler.py   # Error handling utilities
+│   └── common/quality_reporter.py # Quality reporting
+│
+├── 📊 Configuration & Data
+│   ├── requirements.txt          # Dependencies
+│   ├── runtime.txt              # Python version
+│   ├── input/                   # Sample input files
+│   ├── output/                  # Generated output files
+│   └── temp/                   # Temporary session files
+│
+└── 📖 Documentation
+    ├── CLAUDE.md                # Main documentation (this file)
+    ├── README_STREAMLIT.md      # Streamlit setup guide
+    ├── YEU_CAU_FILE_INPUT.md   # Input file requirements
+    ├── SECURITY_FIXES_SUMMARY.md # Security implementation
+    └── START_WEBAPP.md         # Quick start guide
 ```
 
-### Processing Pipeline
+### Processing Pipeline Flow
 ```mermaid
-graph LR
-    A[Input Excel File] --> B[Step 1: Create Template]
-    B --> C[Step 2: Extract Data]
-    C --> D[Step 3: Map Data]
-    D --> E[Step 4: Fill Data]
-    E --> F[Step 5: Filter & Deduplicate]
-    F --> G[Final Output]
+graph TB
+    A[📤 File Upload] --> B[🔒 Security Validation]
+    B --> C[📋 Step 1: Create Template]
+    C --> D[🔍 Step 2: Extract Data]
+    D --> E[📝 Step 3: Pre-mapping Fill]
+    E --> F[🗂️ Step 4: Data Mapping]
+    F --> G[🎯 Step 5: Filter & Deduplicate]
+    G --> H[📥 Download Result]
+    
+    style A fill:#e1f5fe
+    style B fill:#fff3e0
+    style C fill:#f3e5f5
+    style D fill:#e8f5e8
+    style E fill:#fff8e1
+    style F fill:#e3f2fd
+    style G fill:#fce4ec
+    style H fill:#e8f5e8
 ```
 
 ## 🔧 Yêu cầu kỹ thuật
 
 ### Dependencies
 ```python
-openpyxl>=3.0.0        # Excel file processing
-pathlib                # File path handling (built-in)
-logging                # Logging system (built-in)
-json                   # Configuration files (built-in)
-argparse               # Command line interface (built-in)
-typing                 # Type hints (built-in)
-re                     # Regular expressions (built-in)
-os                     # Operating system interface (built-in)
-mimetypes              # File type detection (built-in)
-collections            # Data structures (built-in)
+streamlit>=1.28.0,<1.30.0  # Web interface framework
+openpyxl>=3.0.0,<4.0.0     # Excel file processing
+pathlib                    # File path handling (built-in)
+logging                    # Logging system (built-in)
+json                       # Configuration files (built-in)
+typing                     # Type hints (built-in)
+tempfile                   # Temporary file management (built-in)
+shutil                     # File operations (built-in)
 ```
 
 ### System Requirements
-- **Python**: 3.7+
+- **Python**: 3.8+ (specified in runtime.txt)
 - **File Format**: Excel .xlsx files only (strict validation)
+- **File Size**: Maximum 50MB per upload
 - **Memory**: Minimum 1GB RAM for large datasets
-- **Storage**: 200MB+ free space for intermediate files
-- **Encoding**: UTF-8 compatible
+- **Storage**: 200MB+ free space for temporary files
+- **Network**: For Streamlit web interface access
 
-### Platform Support
-- ✅ Windows 10/11
-- ✅ macOS 10.14+
-- ✅ Linux (Ubuntu 18.04+, CentOS 7+)
-- ✅ Docker containers
+### Browser Support
+- ✅ Chrome 90+
+- ✅ Firefox 88+
+- ✅ Safari 14+
+- ✅ Edge 90+
 
-## 📊 Template Structure & Business Logic
+## 📊 Pipeline Steps Detail
 
-### Step 1: Template Creation
+### Step 1: Template Creation 📋
+**File**: `step1_template_creation.py`
+**Duration**: 2-5 seconds
+
+**Function**: Tạo standardized 17-column template
 **Input**: Any .xlsx file
-**Output**: Standardized 17-column template
+**Output**: Template với headers và formatting chuẩn
 
 **Template Headers (A-Q)**:
 1. **Combination** (Yellow background)
@@ -95,55 +133,104 @@ collections            # Data structures (built-in)
 16. **Warning Limit** (Light green background)
 17. **Additional Information** (Light green background)
 
-### Step 2: Data Extraction
-**Logic**: Extract article names và numbers từ source files
+### Step 2: Data Extraction 🔍
+**File**: `step2_data_extraction.py`
+**Duration**: 10-30 seconds
+
+**Function**: Extract article names và numbers từ source files
 **Search Headers**:
 - Names: `Product name`, `Article name` (case-insensitive)
 - Numbers: `Product number`, `Article number` (case-insensitive)
+
 **Features**:
 - Multi-value cell parsing (`;`, `,`, `\n` delimiters)
 - Automatic duplicate removal
 - Trailing punctuation cleanup
+- M-Textile specific processing logic
 
-### Step 3: Data Mapping
+### Step 3: Pre-mapping Fill 📝
+**File**: `step3_pre_mapping_fill.py`
+**Duration**: 5-15 seconds
+
+**Function**: Pre-processing data fill using vertical inheritance
+**Logic**: Fill empty cells with values from cells above
+**Target Columns**: D, E, F
+**Start Row**: 4 (after headers)
+
+### Step 4: Data Mapping 🗂️
+**File**: `step4_data_mapping.py`
+**Duration**: 15-45 seconds
+
+**Function**: Map data theo business logic
 **Business Rules**:
 - **Finished Product sheets**: Special column mapping (C→D, H→F, K+L→I, etc.)
 - **Other sheets**: General mapping (I→D, J→F, N+O→I, etc.)
 - **Sheet Detection**: Keyword-based (`finished product`) + content-based (>10 rows)
-- **Column Combination**: Multiple columns joined with `-` delimiter
+- **Column Combination**: Multiple columns joined với `-` delimiter
 
-### Step 4: Data Fill
-**Algorithm**: Vertical inheritance filling
-- **Target Columns**: D, E, F
-- **Start Row**: 4 (after headers)
-- **Logic**: Empty cells inherit value từ cell phía trên
+### Step 5: Filter & Deduplicate 🎯
+**File**: `step5_filter_deduplicate.py`
+**Duration**: 10-20 seconds
 
-### Step 5: Filter & Deduplicate
-**Two-stage Process**:
+**Function**: Five-stage filtering process:
 1. **NA Filtering**: Remove rows với Column H = `""`, `"NA"`, `"-"`
-2. **SD Deduplication**: Group SD rows by columns B,C,D,E,F,I,J similarity
-   - Keep first occurrence
-   - Clear columns K,L,M in kept row  
-   - Set column N to common value or "Yearly"
+2. **SD Duplicate Detection**: Find SD groups by columns B,C,D,E,F,I,J similarity
+3. **SD Data Clearing**: Clear columns K,L,M for all SD rows
+4. **SD Deduplication**: Keep first occurrence, remove duplicates
+5. **Column O Cleaning**: Convert "NA" values in column O to empty
 
-## 🛡️ Validation & Error Handling
+## 🌐 Web Interface Features
 
-### File Validation
+### Streamlit Application (`app.py`)
+- **Responsive design** với modern UI components
+- **Real-time progress tracking** với step-by-step indicators
+- **File upload validation** với security checks
+- **Session management** với temporary file handling
+- **Error handling** với user-friendly messages
+- **Download management** với secure filename generation
+
+### UI Components (`ui_components.py`)
+- **File upload area** với validation
+- **Progress indicators** với estimated time
+- **Download section** với custom filename format
+- **Error/success messaging** system
+- **Help section** với usage instructions
+
+### Configuration (`config_streamlit.py`)
 ```python
-# Format validation
-- Extension: .xlsx only
-- MIME type verification
-- File accessibility check
-- Structure integrity validation
+STREAMLIT_CONFIG = {
+    "max_file_size_mb": 50,
+    "security_mode": "lenient",
+    "enable_fallback_validation": True,
+    "session_timeout_hours": 24,
+    "cleanup_interval_hours": 1
+}
 
-# Content validation  
-- Required headers presence
-- Data sufficiency checks
-- Column availability verification
-- Worksheet structure validation
+STEP_CONFIG = {
+    "step1": {"name": "Create Template", "estimated_time": "2-5 seconds"},
+    "step2": {"name": "Extract Data", "estimated_time": "10-30 seconds"},
+    "step3": {"name": "Pre-mapping Fill", "estimated_time": "5-15 seconds"},
+    "step4": {"name": "Data Mapping", "estimated_time": "15-45 seconds"},
+    "step5": {"name": "Filter & Deduplicate", "estimated_time": "10-20 seconds"}
+}
 ```
 
-### Custom Exception Framework
+## 🔒 Security Features
+
+### File Validation
+- **Format validation**: .xlsx only với MIME type verification
+- **Size validation**: 50MB limit với strict enforcement
+- **Content validation**: Excel structure integrity checks
+- **Path validation**: Secure file path handling
+- **Malware scanning**: Basic file signature validation
+
+### Session Security
+- **Unique session IDs**: Cryptographically secure generation
+- **Temporary file isolation**: Session-based file separation
+- **Auto-cleanup**: Automatic removal of old sessions (24h)
+- **Access control**: Secure file permissions (0o600)
+
+### Error Handling
 ```python
 TSConverterError                 # Base exception
 ├── ValidationError              # Input validation failures
@@ -151,65 +238,20 @@ TSConverterError                 # Base exception
 │   ├── WorksheetNotFoundError  # Missing worksheets  
 │   └── ColumnMissingError      # Missing required columns
 ├── DataIntegrityError          # Data quality issues
-│   ├── InsufficientDataError   # Not enough data
-│   └── HeaderNotFoundError     # Missing headers
 ├── ProcessingError             # Runtime processing errors
-│   └── FileAccessError         # File I/O problems
+├── SecurityError               # Security violations
 └── ConfigurationError          # Configuration issues
-```
-
-### Error Context & Debugging
-- **Error codes**: Specific identifiers for each error type
-- **Context information**: File paths, row/column positions, expected vs actual values
-- **Detailed logging**: DEBUG, INFO, WARNING, ERROR levels
-- **User-friendly messages**: Clear error descriptions với suggested fixes
-
-## ⚙️ Configuration Management
-
-### Configuration Sources (Priority Order)
-1. **Environment Variables**: `TSCONVERTER_*`
-2. **JSON Config Files**: `tsconverter.json`, `config.json`
-3. **Default Configuration**: Built-in fallbacks
-
-### Sample Configuration
-```json
-{
-  "general": {
-    "base_dir": ".",
-    "output_dir": "output",
-    "log_level": "INFO",
-    "max_workers": 4
-  },
-  "validation": {
-    "strict_mode": true,
-    "skip_format_validation": false
-  },
-  "step2": {
-    "name_headers": ["Product name", "Article name"],
-    "number_headers": ["Product number", "Article number"]
-  },
-  "step3": {
-    "column_delimiter": "-",
-    "finished_product_keyword": "finished product"
-  },
-  "step5": {
-    "na_values": ["", "NA", "-"],
-    "default_frequency": "Yearly"
-  }
-}
-```
-
-### Environment Variables
-```bash
-export TSCONVERTER_BASE_DIR="/path/to/project"
-export TSCONVERTER_LOG_LEVEL="DEBUG"
-export TSCONVERTER_STRICT_MODE="true"
-export TSCONVERTER_MAX_WORKERS="8"
 ```
 
 ## 🚀 Usage Examples
 
-### Command Line Interface
+### Web Interface Usage
+1. **Access**: Open `http://localhost:8501` (or deployed URL)
+2. **Upload**: Drag & drop .xlsx file (max 50MB)
+3. **Process**: Click "🚀 Start Conversion" và wait for completion
+4. **Download**: Click download button để get result
+
+### CLI Usage (Alternative)
 ```bash
 # Step 1: Create template
 python step1_template_creation.py input.xlsx
@@ -217,69 +259,81 @@ python step1_template_creation.py input.xlsx
 # Step 2: Extract data
 python step2_data_extraction.py output/input-Step1.xlsx -s source_data.xlsx
 
-# Step 3: Map data  
+# Step 3: Pre-mapping fill
 python step3_pre_mapping_fill.py source_data.xlsx output/input-Step2.xlsx
 
-# Step 4: Fill data
-python step4_data_fill.py output/input-Step3.xlsx
+# Step 4: Data mapping
+python step4_data_mapping.py source_data.xlsx output/input-Step2.xlsx output/input-Step3.xlsx
 
 # Step 5: Filter and deduplicate
 python step5_filter_deduplicate.py output/input-Step4.xlsx
-
-# Verbose logging
-python step1_template_creation.py input.xlsx -v
-
-# Custom output path
-python step1_template_creation.py input.xlsx -o /path/to/output.xlsx
-
-# Batch processing
-python step1_template_creation.py *.xlsx --batch
 ```
 
-### Programmatic Usage
-```python
-from step1_template_creation import TemplateCreator
-from common.config import init_config
-from common.exceptions import TSConverterError
+### Filename Format
+- **Web Interface**: `{original_name}_Converted_YYYYMMDD.xlsx`
+- **Fallback**: `TSS_Converted_YYYYMMDD.xlsx`
+- **Examples**:
+  - `input-1.xlsx` → `input-1_Converted_20260103.xlsx`
+  - `Test plan.xlsx` → `Test plan_Converted_20260103.xlsx`
 
-# Initialize configuration
-config = init_config("tsconverter.json")
+## 📁 Input File Requirements
 
-# Create template
-try:
-    creator = TemplateCreator()
-    output = creator.create_template("input.xlsx")
-    print(f"Template created: {output}")
-except TSConverterError as e:
-    print(f"Error: {e}")
-    print(f"Context: {e.context}")
-```
-
-## 📝 Input File Requirements
-
-### Essential Requirements
+### Required Structure
 - **File Format**: `.xlsx` only (Excel 2007+)
-- **File Size**: Maximum 100MB
-- **Required Headers**: `Product name` + `Article number` (hoặc variations)
-- **Data Structure**: Headers với data ngay phía dưới
-- **Encoding**: UTF-8 compatible
+- **File Size**: Maximum 50MB
+- **Required Headers**: `Product name` + `Article number` (or variations)
+- **Data Structure**: Headers với data rows immediately below
 
-### Data Structure Example
-```
-| A | B            | C | D             |
-|---|--------------|---|---------------|
-|   | Product name |   | Article number|
-|   | Product A    |   | PRD-001       |
-|   | Product B    |   | PRD-002       |
-|   | Product C    |   | PRD-003       |
+### Supported Variations
+- `Product name`, `Article name`, `product_name`, `article_name`
+- `Product number`, `Article number`, `product_number`, `article_number`
+- Case-insensitive header matching
+- Multiple worksheets support (auto-detection)
+- Multi-value cells với delimiters: `;`, `,`, `\n`
+
+### Data Quality
+- Minimum 1 product với valid name và number
+- Headers must be present in first 10 rows
+- Data should start immediately after headers
+- Empty cells are handled gracefully
+
+## 🛠️ Development & Testing
+
+### Local Development
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run Streamlit app
+streamlit run app.py
+
+# Run tests
+python tests/run_tests.py
 ```
 
-### Supported Features
-- Multiple worksheets (auto-detection)
-- Flexible header positions
-- Multi-value cells (`Product A; Product B`)
-- Various naming conventions
-- Mixed data types
+### Testing Framework
+```
+tests/
+├── test_pipeline.py          # Pipeline functionality tests
+├── test_security.py          # Security feature tests
+├── test_graceful_degradation.py # Error handling tests
+└── run_tests.py             # Test runner
+```
+
+## 📈 Performance & Monitoring
+
+### Processing Metrics
+- **File size**: Up to 50MB supported
+- **Processing time**: 30s - 2 minutes (depending on file size)
+- **Memory usage**: ~100-500MB during processing
+- **Session storage**: Auto-cleanup after 24 hours
+
+### Quality Reporting
+- Initial vs final row counts
+- NA removal statistics
+- Duplicate removal counts
+- Processing time metrics
+- Error categorization
 
 ## 🔍 Troubleshooting
 
@@ -288,47 +342,47 @@ except TSConverterError as e:
 ❌ FileFormatError: Invalid file format
 → Solution: Save file as Excel Workbook (.xlsx)
 
+❌ FileSizeError: File too large (>50MB)
+→ Solution: Reduce file size or split into smaller files
+
 ❌ HeaderNotFoundError: Required headers missing  
 → Solution: Add "Product name" and "Article number" headers
 
-❌ InsufficientDataError: Not enough data
-→ Solution: Add product data below headers
-
-❌ ValidationError: File validation failed
-→ Solution: Check file accessibility and format
+❌ SessionError: Session expired
+→ Solution: Refresh page and re-upload file
 ```
 
-### Debug Mode
-```bash
-# Enable detailed logging
-export TSCONVERTER_LOG_LEVEL="DEBUG"
-python step1_template_creation.py input.xlsx -v
+### Debug Features
+- **Verbose logging**: Enable trong config_streamlit.py
+- **Session monitoring**: Check temp/ directory for session files
+- **Error tracking**: Detailed error messages với context
+- **Performance monitoring**: Processing time tracking
 
-# Check validation details
-python -c "
-from common.validation import validate_step1_template
-validate_step1_template('input.xlsx')
-"
-```
+## 🎯 Production Deployment
 
-### Performance Optimization
-- **Large files**: Increase memory allocation
-- **Batch processing**: Use parallel workers
-- **Network storage**: Copy files locally first
-- **Multiple formats**: Convert to .xlsx before processing
+### Environment Setup
+1. **Python**: 3.8+ với pip dependencies
+2. **Streamlit**: Configure với appropriate port
+3. **Storage**: Ensure adequate disk space cho temp files
+4. **Security**: Configure firewall và access controls
 
-## 🎯 Success Metrics
-- **Validation Coverage**: 100% input validation với detailed errors
-- **Error Handling**: Comprehensive exception framework
-- **Configuration**: Flexible config management
-- **Documentation**: Complete usage guidelines
-- **Robustness**: Handle edge cases và malformed inputs
-- **User Experience**: Clear error messages và examples
+### Configuration
+- **File limits**: Adjust max_file_size_mb trong config
+- **Session timeout**: Configure cleanup intervals
+- **Security mode**: Set to "strict" for production
+- **Logging**: Enable appropriate log levels
 
-## 📞 Support Information
-- **Documentation**: `YEU_CAU_FILE_INPUT.md` for detailed input requirements
-- **Configuration**: `tsconverter.example.json` for setup examples
-- **Validation**: Built-in validation với detailed error reporting
-- **Logging**: Comprehensive logging for debugging
+## 📞 Support & Documentation
 
-**Note**: Hệ thống được thiết kế để robust và user-friendly. Tuân thủ input requirements trong `YEU_CAU_FILE_INPUT.md` sẽ đảm bảo processing thành công 100%.
+- **Main Documentation**: This file (CLAUDE.md)
+- **Streamlit Setup**: README_STREAMLIT.md
+- **Input Requirements**: YEU_CAU_FILE_INPUT.md
+- **Security Details**: SECURITY_FIXES_SUMMARY.md
+- **Quick Start**: START_WEBAPP.md
+
+---
+
+**Version**: 2.0  
+**Last Updated**: January 2026  
+**Author**: AI Assistant với [Claude Code](https://claude.ai/code)  
+**License**: Internal Use - Ngoc Son Company

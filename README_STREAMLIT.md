@@ -1,225 +1,411 @@
 # TSS Converter Streamlit Web App
 
 ## 📊 Tổng quan
-Web application Streamlit cho TSS Converter - chuyển đổi Excel files từ format tùy ý sang template chuẩn TSS (Technical Specification System) với giao diện web user-friendly.
+Web application Streamlit cho TSS Converter - chuyển đổi Excel files từ format tùy ý sang template chuẩn TSS (Technical Specification System) với giao diện web user-friendly, real-time progress tracking và comprehensive security features.
 
 ## 🌟 Tính năng chính
-- **Upload file Excel**: Giao diện kéo thả đơn giản
-- **Progress tracking**: Theo dõi tiến trình 5 bước real-time
-- **Download kết quả**: Chỉ hiển thị file Step 5 cuối cùng
-- **Error handling**: Xử lý lỗi và validation toàn diện
-- **Responsive UI**: Giao diện thân thiện, hiện đại
-- **Session management**: Quản lý files tạm thời tự động
+- **📤 File Upload**: Drag & drop interface với validation (max 50MB)
+- **📈 Progress Tracking**: Real-time progress với estimated time cho từng step
+- **🔒 Security**: File validation, session management và secure processing
+- **📥 Smart Download**: Custom filename format với original name preservation
+- **🎯 Error Handling**: Comprehensive error handling với user-friendly messages
+- **📱 Responsive UI**: Modern design optimized cho desktop và mobile
+- **🧹 Session Management**: Auto-cleanup temporary files và session isolation
 
-## 🏗️ Cấu trúc Files
+## 🏗️ Architecture & Components
 
-### Core Files
+### Core Application Files
 ```
-├── app.py                     # Main Streamlit application
-├── streamlit_pipeline.py      # Pipeline integration wrapper  
-├── ui_components.py          # Reusable UI components
-├── config_streamlit.py       # Streamlit configuration
-├── requirements.txt          # Dependencies
-└── temp/                     # Temporary file storage
-    ├── uploads/
-    └── outputs/
+Web Interface/
+├── app.py                    # 🚀 Main Streamlit application
+│   ├── File upload handling
+│   ├── Session state management
+│   ├── Progress tracking coordination
+│   └── Download file generation
+│
+├── ui_components.py          # 🎨 Reusable UI components
+│   ├── File upload area với validation
+│   ├── Progress indicators với estimated time
+│   ├── Download section với custom naming
+│   ├── Error/success message system
+│   └── Help và footer sections
+│
+├── config_streamlit.py       # ⚙️ Configuration management
+│   ├── App settings và limits
+│   ├── Step configurations
+│   ├── CSS styling definitions
+│   └── Security parameters
+│
+└── streamlit_pipeline.py     # 🔧 Pipeline integration
+    ├── Streamlit wrapper cho existing pipeline
+    ├── Session-based file management
+    ├── Progress callback system
+    └── Error handling và validation
 ```
 
-### Existing Files (Unchanged)
+### Backend Integration
 ```
-├── step1_template_creation.py
-├── step2_data_extraction.py
-├── step3_pre_mapping_fill.py
-├── step4_data_fill.py
-├── step5_filter_deduplicate.py
-└── common/
-    ├── config.py
-    ├── exceptions.py
-    └── validation.py
+Backend Pipeline/
+├── step1_template_creation.py    # Template generation
+├── step2_data_extraction.py      # Article data extraction
+├── step3_pre_mapping_fill.py     # Pre-mapping data fill
+├── step4_data_mapping.py         # Data mapping logic
+├── step5_filter_deduplicate.py   # Filter và deduplicate
+└── common/                       # Shared utilities
+    ├── config.py                 # Configuration utilities
+    ├── exceptions.py             # Custom exceptions
+    ├── validation.py             # File validation
+    ├── security.py               # Security utilities
+    └── session_manager.py        # Session management
 ```
 
-## 🚀 Hướng dẫn chạy
+## 🚀 Quick Start
 
-### 1. Cài đặt Dependencies
+### Prerequisites
+- **Python 3.8+** (specified in runtime.txt)
+- **Dependencies**: Install từ requirements.txt
+
+### Installation & Setup
 ```bash
+# 1. Clone repository
+git clone <repository-url>
+cd ngocson-tss-converter
+
+# 2. Install dependencies
 pip install -r requirements.txt
-```
 
-### 2. Chạy Web App
-```bash
+# 3. Run Streamlit app
 streamlit run app.py
+
+# 4. Access application
+# Browser sẽ tự động mở http://localhost:8501
 ```
 
-### 3. Truy cập Web App
-- Local: http://localhost:8501
-- Network: http://[YOUR_IP]:8501
+### Basic Usage
+1. **📤 Upload File**: Drag & drop .xlsx file vào upload area
+2. **✅ Validation**: System sẽ validate file format và size
+3. **🚀 Process**: Click "Start Conversion" để bắt đầu processing
+4. **📊 Monitor**: Watch real-time progress với estimated time
+5. **📥 Download**: Download converted file với custom filename
 
-## 📋 Hướng dẫn sử dụng
+## 🔧 Configuration
 
-### Upload File
-1. Click vào upload area
-2. Chọn file Excel (.xlsx) 
-3. File tối đa 50MB
-4. Yêu cầu có headers: Product name + Article number
-
-### Xử lý Pipeline
-1. Click "🚀 Bắt đầu chuyển đổi"
-2. Theo dõi progress bar 5 steps:
-   - Step 1: Tạo Template (17 cột chuẩn)
-   - Step 2: Trích xuất dữ liệu
-   - Step 3: Mapping dữ liệu  
-   - Step 4: Fill dữ liệu vertical
-   - Step 5: Lọc & deduplicate
-
-### Download Kết quả
-1. Sau khi hoàn thành, click "📥 Download File Đã Chuyển Đổi"
-2. File Excel format TSS chuẩn sẽ được download
-
-### Reset & Làm mới
-- "🔄 Xử lý file mới": Reset session, xử lý file khác
-- "🗑️ Xóa files tạm": Clean up temporary files
-
-## ⚙️ Configuration
-
-### File Limits
-- Max file size: 50MB (configurable)
-- Supported formats: .xlsx only
-- Session timeout: 30 minutes
-
-### UI Customization
-Edit `config_streamlit.py`:
+### Streamlit Configuration (`config_streamlit.py`)
 ```python
 STREAMLIT_CONFIG = {
+    # App Settings
+    "app_title": "TSS Converter - Excel Template Converter",
+    "page_title": "TSS Converter",
+    "layout": "wide",
+    
+    # File Upload Settings
     "max_file_size_mb": 50,
-    "theme": {
-        "primary_color": "#FF6B6B",
-        # ... other theme settings
+    "allowed_file_types": [".xlsx"],
+    
+    # Security Settings
+    "security_mode": "lenient",  # "strict" or "lenient"
+    "enable_fallback_validation": True,
+    "session_timeout_hours": 24,
+    
+    # UI Settings
+    "show_error_details": True,
+    "enable_progress_animation": True,
+    "compact_progress_mode": True
+}
+```
+
+### Step Configuration
+```python
+STEP_CONFIG = {
+    "step1": {
+        "name": "Create Template",
+        "description": "Create standard template with 17 column headers",
+        "icon": "📋",
+        "estimated_time": "2-5 seconds"
+    },
+    "step2": {
+        "name": "Extract Data", 
+        "description": "Extract article names and numbers",
+        "icon": "🔍",
+        "estimated_time": "10-30 seconds"
+    },
+    "step3": {
+        "name": "Pre-mapping Fill",
+        "description": "Fill data using vertical inheritance",
+        "icon": "📝", 
+        "estimated_time": "5-15 seconds"
+    },
+    "step4": {
+        "name": "Data Mapping",
+        "description": "Map data according to business logic",
+        "icon": "🗂️",
+        "estimated_time": "15-45 seconds"
+    },
+    "step5": {
+        "name": "Filter & Deduplicate",
+        "description": "Filter NA values and remove duplicates", 
+        "icon": "🎯",
+        "estimated_time": "10-20 seconds"
     }
 }
 ```
 
-### Error Handling
-- Development mode: Show detailed errors
-- Production mode: User-friendly messages only
+## 🔒 Security Features
 
-## 🚨 Troubleshooting
+### File Upload Security
+- **Format Validation**: Strict .xlsx only với MIME type checking
+- **Size Limits**: 50MB maximum với configurable limits
+- **Content Scanning**: Basic malware signature detection
+- **Path Sanitization**: Secure file path handling
+- **Session Isolation**: Files isolated per session
+
+### Session Management
+```python
+# Session Security Features
+- Cryptographically secure session IDs
+- Temporary file isolation (temp/session_<id>/)
+- Auto-cleanup after 24 hours
+- Secure file permissions (0o600)
+- Session state protection
+```
+
+### Error Handling
+- **Graceful Degradation**: Fallback validation khi strict mode fails
+- **User-Friendly Messages**: Clear error descriptions without technical details
+- **Debug Information**: Detailed logging for troubleshooting
+- **Security Logging**: Track suspicious activities
+
+## 🎨 UI/UX Features
+
+### Modern Design
+- **Clean Interface**: Minimalist design với focus on functionality
+- **Responsive Layout**: Works on desktop, tablet và mobile
+- **Progress Visualization**: Visual indicators với estimated completion time
+- **Custom Styling**: Consistent font và color scheme
+
+### User Experience
+```python
+# UX Enhancements
+✅ Drag & drop file upload
+✅ Real-time progress tracking
+✅ Estimated time display
+✅ Step-by-step indicators
+✅ Success/error notifications
+✅ Download with custom filenames
+✅ Help section với instructions
+✅ Automatic session cleanup
+```
+
+## 📁 File Management
+
+### Upload Process
+1. **File Selection**: Drag & drop hoặc click to browse
+2. **Validation**: Format, size và content validation
+3. **Session Creation**: Generate unique session ID
+4. **Secure Storage**: Store in session-specific directory
+5. **Processing Ready**: File ready cho pipeline processing
+
+### Processing Workflow
+```
+Upload → Validate → Session → Process → Download → Cleanup
+   ↓        ↓         ↓        ↓        ↓        ↓
+ temp/   security   unique   5-step   custom   auto-
+ file    checks     session  pipeline filename delete
+```
+
+### Download Features
+- **Custom Naming**: `{original_name}_Converted_YYYYMMDD.xlsx`
+- **Secure Access**: Session-based download links
+- **Auto-Cleanup**: Files deleted after session timeout
+- **Error Recovery**: Graceful handling của download failures
+
+## 📊 Performance & Monitoring
+
+### Performance Metrics
+- **Upload Speed**: Dependent on file size và network
+- **Processing Time**: 30 seconds - 2 minutes (based on file complexity)
+- **Memory Usage**: ~100-500MB during processing
+- **Session Overhead**: ~10-50MB per active session
+
+### Monitoring Features
+```python
+# Built-in Monitoring
+📈 Processing time tracking
+📊 File size và row count metrics  
+🔍 Error categorization và reporting
+📝 Session activity logging
+🧹 Cleanup operation tracking
+```
+
+## 🛠️ Development Guide
+
+### Local Development Setup
+```bash
+# Development environment setup
+pip install -r requirements.txt
+
+# Run với hot reload
+streamlit run app.py --logger.level debug
+
+# Run với custom port
+streamlit run app.py --server.port 8502
+
+# Run với specific config
+STREAMLIT_CONFIG_FILE=config.toml streamlit run app.py
+```
+
+### Custom Configuration
+```python
+# Environment Variables
+STREAMLIT_MAX_FILE_SIZE=52428800    # 50MB in bytes
+STREAMLIT_SESSION_TIMEOUT=86400     # 24 hours in seconds
+STREAMLIT_SECURITY_MODE=strict      # strict or lenient
+STREAMLIT_DEBUG_MODE=false          # Enable debug features
+```
+
+### Testing Interface
+```bash
+# Test upload functionality
+python -c "
+from streamlit_pipeline import StreamlitTSSPipeline
+pipeline = StreamlitTSSPipeline()
+print('Pipeline initialized successfully')
+"
+
+# Test file validation
+python -c "
+from common.validation import validate_step1_input
+validate_step1_input('input/test-1.xlsx')
+print('Validation passed')
+"
+```
+
+## 🔍 Troubleshooting
 
 ### Common Issues
 
-1. **Import Errors**
-```bash
-ModuleNotFoundError: No module named 'streamlit'
+#### Upload Problems
 ```
-**Solution**: `pip install streamlit`
+❌ File too large (>50MB)
+→ Solution: Reduce file size hoặc increase limit trong config
 
-2. **File Upload Fails**
-- Check file format (.xlsx only)
-- Check file size (< 50MB)
-- Ensure file has required headers
+❌ Invalid file format
+→ Solution: Save file as Excel Workbook (.xlsx)
 
-3. **Processing Timeout**
-- Large files may take longer
-- Check file structure (avoid 16k+ columns)
-- Monitor temp directory space
-
-4. **Permission Errors**
-```bash
-PermissionError: [Errno 13] Permission denied
+❌ Upload stuck/timeout
+→ Solution: Check network connection, refresh page
 ```
-**Solution**: Check write permissions for `temp/` directory
+
+#### Processing Errors
+```
+❌ Processing failed at step X
+→ Solution: Check file content, ensure required headers exist
+
+❌ Session expired
+→ Solution: Refresh page và re-upload file
+
+❌ Download not working
+→ Solution: Check browser settings, disable popup blockers
+```
 
 ### Debug Mode
-```bash
-STREAMLIT_ENV=development streamlit run app.py
+```python
+# Enable debug logging trong config_streamlit.py
+STREAMLIT_CONFIG = {
+    "debug_mode": True,
+    "show_error_details": True,
+    "enable_enhanced_logging": True
+}
 ```
 
-## 🌐 Deployment
+### Performance Optimization
+- **Large Files**: Consider splitting files > 30MB
+- **Slow Processing**: Check available memory và CPU
+- **Session Issues**: Clear browser cache và cookies
+- **Network Problems**: Use wired connection for large uploads
 
-### Local Development
+## 🎯 Production Deployment
+
+### Environment Setup
 ```bash
-streamlit run app.py --server.port 8501
+# Production configuration
+export STREAMLIT_SECURITY_MODE=strict
+export STREAMLIT_SESSION_TIMEOUT=43200  # 12 hours
+export STREAMLIT_MAX_FILE_SIZE=52428800  # 50MB
+export STREAMLIT_DEBUG_MODE=false
+
+# Run với production settings
+streamlit run app.py --server.port 8501 --server.headless true
 ```
 
-### Production Deployment
-
-#### Option 1: Streamlit Cloud
-1. Push code to GitHub
-2. Connect to Streamlit Cloud
-3. Deploy from repository
-
-#### Option 2: Docker
+### Docker Deployment (Optional)
 ```dockerfile
-FROM python:3.9-slim
+FROM python:3.8-slim
 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-
 EXPOSE 8501
 
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "app.py", "--server.port", "8501", "--server.headless", "true"]
 ```
 
-#### Option 3: Self-hosted Server
+### Nginx Configuration (Optional)
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location / {
+        proxy_pass http://localhost:8501;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+## 📈 Monitoring & Analytics
+
+### Built-in Metrics
+- **Session Count**: Active và total sessions
+- **Processing Time**: Average time per step
+- **Error Rates**: Success/failure ratios
+- **File Statistics**: Size distribution, format compliance
+
+### Log Analysis
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Check processing logs
+tail -f app.log | grep "PROCESSING"
 
-# Run with custom config
-streamlit run app.py \\
-  --server.port 8501 \\
-  --server.address 0.0.0.0 \\
-  --server.headless true
+# Monitor session activity
+tail -f app.log | grep "SESSION"
+
+# Track errors
+tail -f app.log | grep "ERROR"
 ```
 
-### Environment Variables
-```bash
-export STREAMLIT_ENV=production
-export TSCONVERTER_LOG_LEVEL=INFO
-export TSCONVERTER_MAX_FILE_SIZE=100
-```
+## 📚 Additional Resources
 
-## 📊 Performance
+### Documentation Links
+- **Main Documentation**: [CLAUDE.md](CLAUDE.md)
+- **Input Requirements**: [YEU_CAU_FILE_INPUT.md](YEU_CAU_FILE_INPUT.md) 
+- **Security Details**: [SECURITY_FIXES_SUMMARY.md](SECURITY_FIXES_SUMMARY.md)
+- **Quick Start**: [START_WEBAPP.md](START_WEBAPP.md)
 
-### Optimization Tips
-1. **File Processing**: Large files processed in background threads
-2. **Memory Management**: Automatic cleanup of temp files
-3. **Session State**: Efficient state management
-4. **Error Recovery**: Robust error handling and recovery
-
-### Monitoring
-- Check `temp/` directory size regularly
-- Monitor processing times for large files
-- Watch memory usage during concurrent uploads
-
-## 🔒 Security
-
-### File Validation
-- Strict file format checking (.xlsx only)
-- File size limits
-- Content structure validation
-- No executable file uploads
-
-### Data Protection
-- Temporary files auto-deleted
-- No persistent storage of user data
-- Session-based file isolation
-
-## 📞 Support
-
-### Development
-- Check logs in terminal running Streamlit
-- Use debug mode for detailed error info
-- Monitor `temp/` directory
-
-### Production Issues
-1. Check server logs
-2. Verify file permissions
-3. Monitor resource usage
-4. Review error reporting
+### Support & Maintenance
+- **Issue Tracking**: Check logs trong temp/ directory
+- **Performance Monitoring**: Monitor memory và disk usage
+- **Session Cleanup**: Automatic cleanup runs every hour
+- **Security Updates**: Regular review của validation rules
 
 ---
 
-**Note**: Web app giữ nguyên 100% functionality của CLI version, chỉ thêm giao diện web user-friendly và file management tự động.
+**Version**: 2.0  
+**Last Updated**: January 2026  
+**Streamlit Version**: 1.28.0+  
+**Python Support**: 3.8+  
+**License**: Internal Use - Ngoc Son Company
