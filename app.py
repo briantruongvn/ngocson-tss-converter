@@ -158,8 +158,10 @@ def process_file_sync(file_data: bytes, filename: str):
                 
             persistent_output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
             
-            # Generate secure output filename
-            secure_output_name = f"TSS_Converted_{int(time.time())}.xlsx"
+            # Generate secure output filename with date format
+            from datetime import datetime
+            current_date = datetime.now().strftime("%Y%m%d")
+            secure_output_name = f"TSS_Converted_{current_date}.xlsx"
             persistent_file_path = persistent_output_dir / secure_output_name
             
             # Security: validate final output path

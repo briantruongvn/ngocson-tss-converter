@@ -259,7 +259,7 @@ def render_progress_section(current_step: int = 0, step_status: Dict[str, str] =
 
 def generate_download_filename(original_name: Optional[str] = None) -> str:
     """
-    Generate download filename in format: [filename]-converted-[time].xlsx
+    Generate download filename in format: [filename]_Converted_[date].xlsx
     
     Args:
         original_name: Original filename from upload
@@ -267,15 +267,15 @@ def generate_download_filename(original_name: Optional[str] = None) -> str:
     Returns:
         Formatted filename string
     """
-    # Generate timestamp in format YYYYMMDD-HHMMSS
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Generate timestamp in format YYYYMMDD (date only)
+    timestamp = datetime.now().strftime("%Y%m%d")
     
     if original_name:
         # Remove .xlsx extension if present to avoid double extension
         clean_name = original_name
         if clean_name.lower().endswith('.xlsx'):
             clean_name = clean_name[:-5]
-        return f"{clean_name}-converted-{timestamp}.xlsx"
+        return f"{clean_name}_Converted_{timestamp}.xlsx"
     else:
         # Fallback to current format if no original name
         return f"TSS_Converted_{timestamp}.xlsx"
