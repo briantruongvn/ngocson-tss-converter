@@ -257,16 +257,18 @@ def main():
         # Responsive layout for upload
         col1, col2, col3 = st.columns([0.5, 2, 0.5])
         with col2:
-            file_data = render_file_upload_area()
+            file_upload_result = render_file_upload_area()
             
-            if file_data is not None:
-                # Store uploaded file info in session state
+            if file_upload_result is not None:
+                file_data, original_filename = file_upload_result
+                # Store uploaded file info in session state with original filename
                 if 'uploaded_file_info' not in st.session_state:
                     st.session_state.uploaded_file_info = None
                 
                 st.session_state.uploaded_file_info = {
                     'data': file_data,
-                    'name': f"uploaded_file_{int(time.time())}.xlsx"
+                    'name': f"uploaded_file_{int(time.time())}.xlsx",  # Internal name
+                    'original_filename': original_filename  # Preserve original filename
                 }
                 
             if st.session_state.get('uploaded_file_info') and st.button("🚀 Start Conversion", type="primary"):

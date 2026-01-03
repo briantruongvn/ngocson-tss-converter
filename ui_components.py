@@ -135,10 +135,10 @@ def render_app_header(compact: bool = False):
             </div>
         """, unsafe_allow_html=True)
 
-def render_file_upload_area() -> Optional[bytes]:
+def render_file_upload_area() -> Optional[tuple[bytes, str]]:
     """
     Render compact file upload area with validation
-    Returns uploaded file bytes if valid
+    Returns tuple of (uploaded_file_bytes, original_filename) if valid
     """
     st.markdown("""
         <div class="upload-area-compact">
@@ -167,7 +167,7 @@ def render_file_upload_area() -> Optional[bytes]:
         render_info_message(
             f"✅ File uploaded: {uploaded_file.name} ({file_size_mb:.1f}MB)"
         )
-        return uploaded_file.getvalue()
+        return uploaded_file.getvalue(), uploaded_file.name
     
     return None
 
@@ -317,9 +317,22 @@ def render_download_section(output_file_path: Optional[Union[str, Path]] = None,
             with open(file_path, "rb") as file:
                 file_data = file.read()
             
-            # Extract original filename from output file path (reliable approach)
-            original_name = get_clean_basename(file_path) if file_path else None
-            logger.info(f"📥 Extracted original name from file path: {original_name}")
+            # Extract original filename from session state (most reliable)
+            original_name = None
+            try:
+                uploaded_file_info = safe_get_session_value('uploaded_file_info', {})
+                if uploaded_file_info and 'original_filename' in uploaded_file_info:
+                    original_name = uploaded_file_info['original_filename']
+                    logger.info(f"📥 Got original filename from session: {original_name}")
+                else:
+                    # Fallback to extracting from output file path
+                    original_name = get_clean_basename(file_path) if file_path else None
+                    logger.info(f"📥 Extracted original name from file path (fallback): {original_name}")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not get original filename from session: {e}")
+                # Fallback to extracting from output file path
+                original_name = get_clean_basename(file_path) if file_path else None
+                logger.info(f"📥 Extracted original name from file path (fallback): {original_name}")
             
             # Generate download filename with new format
             download_filename = generate_download_filename(original_name)
