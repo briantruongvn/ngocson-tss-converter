@@ -415,6 +415,43 @@ def set_config(config: TSConverterConfig) -> None:
     _global_config = config
 
 
+def get_clean_basename(filename: Union[str, Path]) -> str:
+    """
+    Get clean base filename by removing step suffixes and extensions
+    
+    Args:
+        filename: Input filename (can include path, extension, step suffixes)
+        
+    Returns:
+        Clean base filename without step suffixes or extension
+        
+    Examples:
+        get_clean_basename("Input-3 - Step2.xlsx") -> "Input-3"
+        get_clean_basename("input-1 - Step2 - Step3.xlsx") -> "input-1"
+        get_clean_basename("/path/to/MyFile.xlsx") -> "MyFile"
+    """
+    path = Path(filename)
+    base_name = path.stem  # Remove extension
+    
+    # Remove step suffixes in any order
+    import re
+    # Pattern: matches " - Step1", " - Step2", ..., " - Step6", " - Final"
+    step_pattern = r'\s*-\s*Step[1-6]|\s*-\s*Final'
+    
+    # Keep removing step suffixes until none remain
+    while True:
+        new_name = re.sub(step_pattern, '', base_name, flags=re.IGNORECASE)
+        if new_name == base_name:
+            break
+        base_name = new_name
+    
+    # Clean up any trailing/leading whitespace
+    base_name = base_name.strip()
+    
+    logger.debug(f"Cleaned basename: {filename} -> {base_name}")
+    return base_name
+
+
 def init_config(config_file: Optional[Union[str, Path]] = None, base_dir: Optional[str] = None) -> TSConverterConfig:
     """
     Initialize global configuration

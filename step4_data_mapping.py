@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 Step 4: Data Mapping and Transfer
-Maps data from source Excel file to Step2 template with specific column mappings.
+Maps data from Step3 output file (source file with filled data) to Step2 template with specific column mappings.
+
+Input: Step3 output file (source Excel file with data filled in Step 3)
+Output: Step4 file with data mapped from Step3 to Step2 template
 """
 
 import openpyxl
@@ -15,7 +18,7 @@ import shutil
 
 from common.validation import validate_step3_input, FileValidator
 from common.exceptions import TSConverterError
-from common.config import get_config
+from common.config import get_config, get_clean_basename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,13 +26,25 @@ logger = logging.getLogger(__name__)
 
 class DataMapper:
     """
-    Data Mapper for Step 3
+    Data Mapper for Step 4
     
-    Maps data from source Excel file to Step2 template based on sheet naming patterns:
+    Maps data from Step3 output file to Step2 template based on sheet naming patterns:
+    
+    Input: Step3 output file (source Excel file with data filled from previous steps)
+    Target: Step2 template (auto-detected based on filename)
+    
+    Mapping Logic:
     - F-type sheets (F-[Finished products]): Special mapping with header search
     - M-type sheets (M-[Material type]): Direct mapping, continues after existing data
     - C-type sheets (C-[Component type]): Direct mapping, continues after existing data
+    - P-type sheets (P-[Process type]): Process-specific mapping
     - Combines specified columns with delimiter
+    
+    Process:
+    1. Copy Step2 template as base
+    2. Read data from Step3 output file
+    3. Map data columns to template columns based on sheet type
+    4. Write mapped data to output file (Step4)
     """
     
     def __init__(self, base_dir: Optional[str] = None):
@@ -627,14 +642,26 @@ class DataMapper:
     def process_file(self, input_file: Union[str, Path],
                     output_file: Optional[Union[str, Path]] = None) -> str:
         """
-        Process Step 3 output file and map data to Step2 template (auto-detected)
+        Process Step3 output file and map data to Step2 template (auto-detected)
+        
+        Step 4 reads data from Step3 output (source file with filled data) and maps it 
+        to the corresponding Step2 template based on sheet types and column mappings.
         
         Args:
-            input_file: Input Excel file from Step 3 (e.g., Input-3 - Step3.xlsx)
-            output_file: Optional output file path (if None, auto-generate Step4)
+            input_file: Step3 output file (e.g., Input-3 - Step3.xlsx) containing 
+                       source data with filled information from previous steps
+            output_file: Optional output file path (if None, auto-generate Step4 filename)
             
         Returns:
-            Path to output file
+            Path to Step4 output file with mapped data
+            
+        Process:
+        1. Extract clean base filename from Step3 input
+        2. Auto-detect corresponding Step2 template file  
+        3. Copy Step2 template as output base
+        4. Read data from Step3 input file
+        5. Map columns based on sheet types (F/M/C/P)
+        6. Write mapped data to output file
         """
         logger.info("📋 Step 4: Data Mapping")
         
@@ -649,10 +676,7 @@ class DataMapper:
         base_name = input_path.stem  # e.g., "Input-3 - Step3"
         
         # Extract original filename from Step3 naming
-        if " - Step3" in base_name:
-            original_name = base_name.replace(" - Step3", "")
-        else:
-            original_name = base_name
+        original_name = get_clean_basename(base_name)
         
         # Auto-detect Step2 template file using original name
         step2_file = self.output_dir / f"{original_name} - Step2.xlsx"

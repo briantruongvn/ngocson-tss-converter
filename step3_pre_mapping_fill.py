@@ -15,7 +15,7 @@ import shutil
 
 from common.validation import FileValidator
 from common.exceptions import TSConverterError
-from common.config import get_config
+from common.config import get_config, get_clean_basename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -283,7 +283,7 @@ class PreMappingFiller:
         
         # Auto-generate output file if not provided
         if output_file is None:
-            base_name = input_path.stem
+            base_name = get_clean_basename(input_path)
             output_file = self.output_dir / f"{base_name} - Step3.xlsx"
         else:
             output_file = Path(output_file)

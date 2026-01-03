@@ -17,6 +17,7 @@ from collections import defaultdict
 
 from common.validation import validate_step5_input, FileValidator
 from common.exceptions import TSConverterError
+from common.config import get_clean_basename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -337,7 +338,7 @@ class DataFilter:
         
         # Enhanced output file handling with directory management
         if output_file is None:
-            base_name = step4_path.stem.replace(" - Step4", "")
+            base_name = get_clean_basename(step4_path)
             output_file = self.output_dir / f"{base_name} - Step5.xlsx"
             logger.info(f"📤 DATAFILTER: Auto-generated output path: {output_file}")
         else:

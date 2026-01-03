@@ -15,6 +15,7 @@ import re
 
 from common.validation import FileValidator
 from common.exceptions import TSConverterError
+from common.config import get_clean_basename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -300,7 +301,7 @@ class ArticleCrossReference:
         
         # Auto-generate output file if not provided
         if output_file is None:
-            base_name = step5_path.stem.replace(" - Step5", "")
+            base_name = get_clean_basename(step5_path)
             output_file = self.output_dir / f"{base_name} - Final.xlsx"
         else:
             output_file = Path(output_file)

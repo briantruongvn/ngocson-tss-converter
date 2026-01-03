@@ -267,9 +267,13 @@ class StreamlitTSSPipeline:
         """
         Helper method for Step 4 DataMapper - handles complex file dependencies
         
+        Step 4 DataMapper needs access to both source file and Step3 output:
+        - source_file: Used for reference and compatibility (Step 4 actually uses Step3 data)
+        - step3_output: The actual input file containing data to be mapped
+        
         Args:
-            source_file: Original input file for mapping
-            step3_output: Step3 output file 
+            source_file: Original input file (kept for compatibility, Step 4 uses step3_output)
+            step3_output: Step3 output file containing source data to be mapped
             output_dir: Session output directory
             output_filename: Target output filename
             
@@ -765,7 +769,20 @@ class StreamlitTSSPipeline:
             raise TSConverterError(f"Step 3 failed: {str(e)}")
     
     def _run_step4(self, source_file: Path, step3_output: Path, output_dir: Path) -> Path:
-        """Run Step 4: Data Mapping - Direct CLI module call with security wrapper"""
+        """
+        Run Step 4: Data Mapping - Direct CLI module call with security wrapper
+        
+        Step 4 maps data from Step3 output (source file with filled data) to Step2 template.
+        Note: source_file parameter kept for compatibility but Step 4 actually uses step3_output.
+        
+        Args:
+            source_file: Original input file (kept for interface compatibility)
+            step3_output: Step3 output file containing source data with filled information
+            output_dir: Session output directory
+            
+        Returns:
+            Path to Step4 output file
+        """
         try:
             # Create Step4 output filename
             output_filename = step3_output.name.replace(" - Step3.xlsx", " - Step4.xlsx")
