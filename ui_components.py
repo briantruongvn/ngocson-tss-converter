@@ -134,10 +134,10 @@ def render_app_header(compact: bool = False):
             </div>
         """, unsafe_allow_html=True)
 
-def render_file_upload_area() -> Optional[bytes]:
+def render_file_upload_area() -> Optional[Dict[str, Any]]:
     """
     Render compact file upload area with validation
-    Returns uploaded file bytes if valid
+    Returns dict with 'data' (bytes) and 'original_name' (str) if valid
     """
     st.markdown("""
         <div class="upload-area-compact">
@@ -321,11 +321,23 @@ def render_download_section(output_file_path: Optional[Union[str, Path]] = None,
             
             # Get original filename from session state
             original_name = None
-            if hasattr(st, 'session_state') and st.session_state.get('uploaded_file_info'):
-                original_name = st.session_state.uploaded_file_info.get('original_name')
+            logger.debug("🔍 Checking session state for original filename...")
+            
+            if hasattr(st, 'session_state'):
+                logger.debug(f"✅ session_state available")
+                uploaded_file_info = st.session_state.get('uploaded_file_info')
+                if uploaded_file_info:
+                    logger.debug(f"✅ uploaded_file_info found: {uploaded_file_info.keys()}")
+                    original_name = uploaded_file_info.get('original_name')
+                    logger.debug(f"✅ original_name retrieved: {original_name}")
+                else:
+                    logger.debug("❌ uploaded_file_info not found in session_state")
+            else:
+                logger.debug("❌ session_state not available")
             
             # Generate download filename with new format
             download_filename = generate_download_filename(original_name)
+            logger.info(f"📥 Generated download filename: {download_filename}")
             
             st.download_button(
                 label="📥 Download Converted File",
