@@ -259,7 +259,18 @@ class ThreadSafeSessionManager:
                 # Reset to defaults but keep essential data
                 st.session_state['processing_state'] = ProcessingState.IDLE.value
                 st.session_state['progress_data'] = ProgressData().__dict__
-                st.session_state['uploaded_file_info'] = None
+                
+                # DON'T clear uploaded_file_info completely!
+                # Preserve original_filename for download naming
+                # But clear sensitive data like file content
+                if st.session_state.get('uploaded_file_info'):
+                    # Preserve only original_filename, clear the rest
+                    original_filename = st.session_state['uploaded_file_info'].get('original_filename')
+                    st.session_state['uploaded_file_info'] = {
+                        'original_filename': original_filename
+                    }
+                else:
+                    st.session_state['uploaded_file_info'] = None
                 
                 # Don't clear output_file_path and processing_stats
                 # so user can still download results
