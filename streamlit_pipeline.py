@@ -262,18 +262,19 @@ class StreamlitTSSPipeline:
         except Exception as e:
             raise TSConverterError(f"{step_name} failed: {str(e)}")
     
-    def _call_data_mapper_cli(self, source_file: Path, step3_output: Path, output_dir: Path,
-                             output_filename: str) -> Path:
+    def _call_data_mapper_cli(self, source_file: Path, step2_output: Path, step3_output: Path, 
+                             output_dir: Path, output_filename: str) -> Path:
         """
         Helper method for Step 4 DataMapper - handles complex file dependencies
         
-        Step 4 DataMapper needs access to both source file and Step3 output:
-        - source_file: Used for reference and compatibility (Step 4 actually uses Step3 data)
-        - step3_output: The actual input file containing data to be mapped
+        Step 4 DataMapper needs access to:
+        - step2_output: Template with article headers (auto-detected by DataMapper)
+        - step3_output: Source file with filled data (actual input for mapping)
         
         Args:
-            source_file: Original input file (kept for compatibility, Step 4 uses step3_output)
-            step3_output: Step3 output file containing source data to be mapped
+            source_file: Original input file (for reference only)
+            step2_output: Step2 output file (template with article headers)
+            step3_output: Step3 output file (source file with filled data)  
             output_dir: Session output directory
             output_filename: Target output filename
             
@@ -281,16 +282,26 @@ class StreamlitTSSPipeline:
             Path to Step4 file in session directory
         """
         try:
-            # Security validation
-            self._validate_paths_security(source_file, step3_output, output_dir)
+            # Security validation for all paths
+            self._validate_paths_security(source_file, step2_output, step3_output, output_dir)
             
             # Create session output path
             session_output = output_dir / output_filename
             if not validate_path_security(session_output, self.temp_dir):
                 raise SecurityError(f"Session output path validation failed: {session_output}")
             
-            # DataMapper auto-detects Step2 template, so we need to ensure Step3 is accessible
-            # Copy step3_output to expected location if needed
+            # DataMapper auto-detects Step2 template, so we need to ensure Step2 is accessible
+            # Copy step2_output to expected location if needed
+            step2_name = step2_output.name
+            expected_step2_path = output_dir / step2_name
+            temp_step2_created = False
+            
+            if step2_output != expected_step2_path and not expected_step2_path.exists():
+                shutil.copy2(str(step2_output), str(expected_step2_path))
+                temp_step2_created = True
+                logger.info(f"Copied Step2 file for DataMapper detection: {step2_output} -> {expected_step2_path}")
+            
+            # DataMapper also needs Step3 (filled source) as input
             step3_name = step3_output.name
             expected_step3_path = output_dir / step3_name
             temp_step3_created = False
@@ -304,15 +315,20 @@ class StreamlitTSSPipeline:
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # Direct CLI module call - Single source of truth!
-            # Step 4 DataMapper expects Step3 output as input (not source_file)
+            # Step 4 DataMapper expects Step3 output (filled source) as input
+            # It auto-detects Step2 template based on filename
             parent_dir = output_dir.parent  # Avoid double output directory
             mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
             cli_result = mapper.process_file(str(step3_output), str(session_output))
             
-            # Clean up temporary file if created
+            # Clean up temporary files if created
             if temp_step3_created and expected_step3_path.exists():
                 expected_step3_path.unlink(missing_ok=True)
                 logger.info(f"Cleaned up temporary Step3 file: {expected_step3_path}")
+            
+            if temp_step2_created and expected_step2_path.exists():
+                expected_step2_path.unlink(missing_ok=True)
+                logger.info(f"Cleaned up temporary Step2 file: {expected_step2_path}")
             
             # Verify and return result
             result_path = Path(cli_result)
@@ -499,21 +515,21 @@ class StreamlitTSSPipeline:
                 progress_callback.complete_step(2, "Extract Data")
             self.processing_stats["steps_completed"] = 2
             
-            # Step 3: Pre-mapping Fill
+            # Step 3: Pre-mapping Fill (process SOURCE FILE, not Step2 output)
             if progress_callback:
                 progress_callback.start_step(3, "Pre-mapping Fill")
             
-            step3_output = self._run_step3(step2_output, output_dir)
+            step3_output = self._run_step3(input_file_path, output_dir)
             
             if progress_callback:
                 progress_callback.complete_step(3, "Pre-mapping Fill")
             self.processing_stats["steps_completed"] = 3
             
-            # Step 4: Data Mapping
+            # Step 4: Data Mapping (needs Step2 template + Step3 filled source)
             if progress_callback:
                 progress_callback.start_step(4, "Data Mapping")
             
-            step4_output = self._run_step4(input_file_path, step3_output, output_dir)
+            step4_output = self._run_step4(input_file_path, step2_output, step3_output, output_dir)
             
             if progress_callback:
                 progress_callback.complete_step(4, "Data Mapping")
@@ -751,15 +767,27 @@ class StreamlitTSSPipeline:
         except Exception as e:
             raise TSConverterError(f"Step 2 failed: {str(e)}")
     
-    def _run_step3(self, step2_output: Path, output_dir: Path) -> Path:
-        """Run Step 3: Pre-mapping Fill - Direct CLI module call with security wrapper"""
+    def _run_step3(self, source_file: Path, output_dir: Path) -> Path:
+        """
+        Run Step 3: Pre-mapping Fill - Direct CLI module call with security wrapper
+        
+        Step 3 processes the SOURCE FILE to pre-fill empty cells using vertical inheritance.
+        
+        Args:
+            source_file: Original source Excel file (with F/M/C/P sheets to fill)
+            output_dir: Session output directory
+            
+        Returns:
+            Path to Step3 output (source file with filled data)
+        """
         try:
             # Security validation using helper
-            self._validate_paths_security(step2_output, output_dir)
+            self._validate_paths_security(source_file, output_dir)
             
             # Direct CLI module call - Single source of truth!
+            # Step 3 processes SOURCE FILE (not Step2 output)
             filler = step3_pre_mapping_fill.PreMappingFiller()
-            cli_output = filler.process_file(str(step2_output))
+            cli_output = filler.process_file(str(source_file))
             
             # Handle output file using helper
             return self._handle_cli_output_file(cli_output, output_dir, "Step 3 (Pre-mapping Fill)")
@@ -769,20 +797,23 @@ class StreamlitTSSPipeline:
         except Exception as e:
             raise TSConverterError(f"Step 3 failed: {str(e)}")
     
-    def _run_step4(self, source_file: Path, step3_output: Path, output_dir: Path) -> Path:
+    def _run_step4(self, source_file: Path, step2_output: Path, step3_output: Path, output_dir: Path) -> Path:
         """
         Run Step 4: Data Mapping - Direct CLI module call with security wrapper
         
-        Step 4 maps data from Step3 output (source file with filled data) to Step2 template.
-        Note: source_file parameter kept for compatibility but Step 4 actually uses step3_output.
+        Step 4 maps data from Step3 output (filled source file) to Step2 template.
         
         Args:
-            source_file: Original input file (kept for interface compatibility)
-            step3_output: Step3 output file containing source data with filled information
+            source_file: Original input file (for reference, Step 4 uses step3_output)
+            step2_output: Step2 output file (template with article headers)
+            step3_output: Step3 output file (source file with filled data)
             output_dir: Session output directory
             
         Returns:
             Path to Step4 output file
+            
+        Note: Step 4 needs access to both Step2 (template) and Step3 (filled source) 
+              but DataMapper auto-detects Step2 based on filename patterns
         """
         try:
             # Create Step4 output filename
@@ -792,7 +823,7 @@ class StreamlitTSSPipeline:
                 output_filename = step3_output.stem + " - Step4.xlsx"
             
             # Direct CLI module call using specialized helper - Single source of truth!
-            return self._call_data_mapper_cli(source_file, step3_output, output_dir, output_filename)
+            return self._call_data_mapper_cli(source_file, step2_output, step3_output, output_dir, output_filename)
             
         except SecurityError:
             raise

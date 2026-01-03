@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
 Step 3: Pre-Mapping Data Fill
-Fills empty cells in source sheets before data mapping to ensure data integrity within each sheet.
+Fills empty cells in source file sheets before data mapping to ensure data integrity.
+
+Input: Source Excel file (original input file with F/M/C/P type sheets)
+Output: Step3 file (source file with vertical inheritance filled)
+
+Purpose: Pre-fill empty cells in source sheets using vertical inheritance logic
+         before Step 4 maps data to Step2 template.
 """
 
 import openpyxl
@@ -23,12 +29,24 @@ logger = logging.getLogger(__name__)
 
 class PreMappingFiller:
     """
-    Pre-Mapping Data Filler for Step 2.5
+    Pre-Mapping Data Filler for Step 3
     
-    Fills empty cells in source sheets (F, M, C, P types) before mapping:
-    - Identifies sheet types based on naming patterns
-    - Fills relevant columns within each sheet boundary
-    - Preserves data integrity per sheet
+    Fills empty cells in SOURCE FILE sheets (F, M, C, P types) before mapping:
+    
+    Input: Source Excel file containing F/M/C/P type sheets with product data
+    Output: Source file with vertical inheritance filled in relevant columns
+    
+    Process:
+    - Identifies sheet types based on naming patterns (F/M/C/P)
+    - Finds data boundaries within each source sheet
+    - Fills empty cells using vertical inheritance (carry down values)
+    - Preserves data integrity per sheet boundary
+    
+    Sheet Types:
+    - F-type (Finished products): No filling (skip)
+    - M-type (Materials): Fill columns J, K, L (material info)
+    - C-type (Components): Fill columns I, J, K (component info)
+    - P-type (Process): Fill columns J, K, L (process info)
     """
     
     def __init__(self, base_dir: Optional[str] = None):
@@ -263,14 +281,24 @@ class PreMappingFiller:
     def process_file(self, input_file: Union[str, Path],
                     output_file: Optional[Union[str, Path]] = None) -> str:
         """
-        Process input file and fill data in each sheet before mapping
+        Process SOURCE FILE and fill data using vertical inheritance in each sheet
+        
+        Step 3 takes the SOURCE Excel file (with F/M/C/P sheets) and pre-fills empty cells
+        using vertical inheritance logic before Step 4 maps data to Step2 template.
         
         Args:
-            input_file: Input Excel file path
-            output_file: Optional output file path (if None, auto-generate)
+            input_file: SOURCE Excel file path (original input with product sheets)
+            output_file: Optional output file path (if None, auto-generate Step3)
             
         Returns:
-            Path to output file
+            Path to Step3 output file (source file with filled data)
+            
+        Process:
+        1. Validate source file format
+        2. Copy source file as base
+        3. Process each sheet (F/M/C/P types)
+        4. Apply vertical inheritance filling in relevant columns
+        5. Save filled source file as Step3 output
         """
         logger.info("📋 Step 3: Pre-Mapping Data Fill")
         
