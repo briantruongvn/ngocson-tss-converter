@@ -49,7 +49,7 @@ print(f"step4_data_mapping.py: {os.path.exists('step4_data_mapping.py')}")
 **What we fixed:**
 ```python
 # Before (❌ - causing ModuleNotFoundError)
-import step3_data_mapping  # File was renamed
+import step3_pre_mapping_fill  # File was renamed
 import step4_data_fill     # File was deleted
 
 # After (✅ - correct imports)  
@@ -60,7 +60,7 @@ import step4_data_mapping      # Renamed mapping module
 **Class updates:**
 ```python
 # Before (❌)
-mapper = step3_data_mapping.DataMapper()
+mapper = step3_pre_mapping_fill.DataMapper()
 filler = step4_data_fill.DataFiller()
 
 # After (✅)

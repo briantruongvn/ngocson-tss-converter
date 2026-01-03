@@ -19,7 +19,7 @@ Hệ thống Python chuyên nghiệp để chuyển đổi Excel files từ form
 TSS Converter/
 ├── step1_template_creation.py    # Template generation với formatting
 ├── step2_data_extraction.py      # Article data extraction từ source
-├── step3_data_mapping.py         # Data mapping với business logic  
+├── step3_pre_mapping_fill.py     # Pre-mapping data fill và business logic  
 ├── step4_data_fill.py            # Vertical inheritance filling
 ├── step5_filter_deduplicate.py   # NA filtering và SD deduplication
 ├── common/
@@ -218,7 +218,7 @@ python step1_template_creation.py input.xlsx
 python step2_data_extraction.py output/input-Step1.xlsx -s source_data.xlsx
 
 # Step 3: Map data  
-python step3_data_mapping.py source_data.xlsx output/input-Step2.xlsx
+python step3_pre_mapping_fill.py source_data.xlsx output/input-Step2.xlsx
 
 # Step 4: Fill data
 python step4_data_fill.py output/input-Step3.xlsx
