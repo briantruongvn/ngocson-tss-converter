@@ -12,6 +12,7 @@ from datetime import datetime
 
 from config_streamlit import get_custom_css, get_step_config, STREAMLIT_CONFIG
 from common.config import get_clean_basename
+from common.session_manager import safe_get_session_value
 
 # Set up logger
 logger = logging.getLogger(__name__)
