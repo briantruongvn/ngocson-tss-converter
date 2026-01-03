@@ -27,11 +27,12 @@ class DataFilter:
     """
     Data Filter for Step 5
     
-    Four-stage filtering process:
+    Five-stage filtering process:
     1. Remove rows where column H is NA/empty/"-"
     2. Find SD duplicate groups based on columns B,C,D,E,F,I,J similarity
     3. Clear columns K,L,M for all SD rows
     4. Deduplicate SD rows (keep first, remove others, set column N)
+    5. Clean column O by converting "NA" values to empty
     """
     
     def __init__(self, base_dir: Optional[str] = None):
@@ -301,6 +302,41 @@ class DataFilter:
         logger.info(f"Deduplicated {rows_processed} groups, removed {removed_count} duplicate rows")
         return removed_count
     
+    def clean_column_o_na_values(self, worksheet) -> int:
+        """
+        Step 5.5: Clean NA values in column O by converting them to empty
+        
+        Args:
+            worksheet: openpyxl worksheet object
+            
+        Returns:
+            Number of cells cleaned
+        """
+        logger.info("Step 5.5: Cleaning NA values in column O")
+        
+        o_col_num = openpyxl.utils.column_index_from_string('O')
+        cleaned_count = 0
+        
+        # Process all rows from start_row to max_row
+        for row in range(self.start_row, worksheet.max_row + 1):
+            try:
+                cell = worksheet.cell(row, o_col_num)
+                cell_value = cell.value
+                
+                # Check if cell value is "NA" (case-insensitive)
+                if cell_value and isinstance(cell_value, str):
+                    if cell_value.strip().upper() == "NA":
+                        cell.value = None  # Set to empty
+                        cleaned_count += 1
+                        logger.debug(f"Cleaned NA value in O{row}")
+                
+            except Exception as e:
+                logger.warning(f"Error processing cell O{row}: {e}")
+                continue
+        
+        logger.info(f"Cleaned {cleaned_count} NA values in column O")
+        return cleaned_count
+    
     def process_file(self, step4_file: Union[str, Path],
                     output_file: Optional[Union[str, Path]] = None) -> str:
         """
@@ -442,6 +478,9 @@ class DataFilter:
             # Step 5.4: Deduplicate SD rows
             sd_removed = self.deduplicate_sd_rows(ws)
             
+            # Step 5.5: Clean column O NA values
+            column_o_cleaned = self.clean_column_o_na_values(ws)
+            
             # Get final stats
             final_rows = ws.max_row
             total_removed = na_removed + sd_removed
@@ -451,6 +490,7 @@ class DataFilter:
             logger.info(f"  NA rows removed: {na_removed}")
             logger.info(f"  SD rows cleared (K,L,M): {sd_cleared}")
             logger.info(f"  SD duplicates removed: {sd_removed}")
+            logger.info(f"  Column O NA values cleaned: {column_o_cleaned}")
             logger.info(f"  Total rows removed: {total_removed}")
             logger.info(f"  Final rows: {final_rows}")
             
