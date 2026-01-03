@@ -301,7 +301,7 @@ class ArticleCrossReference:
         # Auto-generate output file if not provided
         if output_file is None:
             base_name = step5_path.stem.replace(" - Step5", "")
-            output_file = self.output_dir / f"Standard Internal TSS - {base_name}.xlsx"
+            output_file = self.output_dir / f"{base_name} - Final.xlsx"
         else:
             output_file = Path(output_file)
         
@@ -409,7 +409,7 @@ def main():
     """Command line interface for article cross-reference"""
     parser = argparse.ArgumentParser(description='Article Cross-Reference Step 6 - Mark Article Matches')
     parser.add_argument('step5_file', help='Step 5 file (*.xlsx)')
-    parser.add_argument('-o', '--output', help='Output file path')
+    parser.add_argument('-o', '--output', help='Output file path (optional, auto-generates - Final.xlsx)')
     parser.add_argument('-d', '--base-dir', help='Base directory', default='.')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose logging')
     

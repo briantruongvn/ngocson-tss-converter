@@ -75,6 +75,10 @@ class TSConverterConfig:
                 "B": "Q", "C": "B", "D": "C", "I": "D", "J": "F", "K": "E", "P": "J",
                 "Q": "K", "R": "L", "S": "M", "T": "N", "V": "O", "W": "H", "Z": "P"
             },
+            "p_type_mapping": {
+                "B": "Q", "C": "B", "D": "C", "F": "G", "J": "D", "K": "F", "L": "E",
+                "Q": "J", "R": "K", "S": "L", "T": "M", "U": "N", "W": "O", "X": "H"
+            },
             "column_delimiter": "-"
         },
         "step4": {

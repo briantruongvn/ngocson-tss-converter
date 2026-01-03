@@ -390,6 +390,43 @@ class DataExtractor:
         logger.debug(f"Finished extracting from column {start_col}, found {len(data)} items, skipped {hidden_rows_skipped} hidden rows")
         return data
 
+    def extract_article_numbers_by_position(self, worksheet, name_positions: List[Tuple[int, int]]) -> List[str]:
+        """
+        Extract article numbers based on position - article numbers are assumed to be 
+        immediately to the right of article names (col + 1)
+        
+        Args:
+            worksheet: openpyxl worksheet object
+            name_positions: List of (row, col) tuples for article name headers
+            
+        Returns:
+            List of article numbers extracted from positions (row, col + 1)
+        """
+        all_numbers = []
+        
+        for name_row, name_col in name_positions:
+            # Article number is assumed to be at (name_row, name_col + 1)
+            number_col = name_col + 1
+            
+            try:
+                numbers = self.extract_data_vertical(worksheet, name_row, number_col)
+                all_numbers.extend(numbers)
+                logger.info(f"Extracted {len(numbers)} article numbers from {worksheet.title}!{worksheet.cell(name_row, number_col).coordinate} (position-based: col {name_col} + 1)")
+            except Exception as e:
+                logger.warning(f"Failed to extract article numbers from position {worksheet.title}!({name_row}, {number_col}): {e}")
+                # Try to find number headers as fallback
+                logger.info("Attempting fallback to find 'Article number' headers...")
+                try:
+                    number_cells = self.find_header_cells(worksheet, self.number_headers)
+                    for row, col in number_cells:
+                        numbers = self.extract_data_vertical(worksheet, row, col)
+                        all_numbers.extend(numbers)
+                        logger.info(f"Fallback: Extracted {len(numbers)} numbers from {worksheet.title}!{worksheet.cell(row, col).coordinate}")
+                except Exception as fallback_error:
+                    logger.warning(f"Fallback also failed: {fallback_error}")
+        
+        return all_numbers
+
     def populate_template_with_merged_cells(self, worksheet, unique_names: List[str], unique_numbers: List[str]) -> None:
         """
         Populate Step1 template with merged cells starting from column R
@@ -565,14 +602,21 @@ class DataExtractor:
                         logger.error(f"Error extracting names from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
                         continue
                 
-                for row, col in number_cells:
-                    try:
-                        numbers = self.extract_data_vertical(worksheet, row, col)
-                        all_numbers.extend(numbers)
-                        logger.info(f"Extracted {len(numbers)} numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}")
-                    except Exception as e:
-                        logger.error(f"Error extracting numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
-                        continue
+                # Use position-based article number extraction (numbers are right of names)
+                logger.info("Using position-based article number extraction (numbers are right of article names)")
+                all_numbers.extend(self.extract_article_numbers_by_position(worksheet, name_cells))
+                
+                # Keep fallback to header-based extraction if position-based fails
+                if not all_numbers and number_cells:
+                    logger.info("Position-based extraction failed, using fallback to header-based extraction")
+                    for row, col in number_cells:
+                        try:
+                            numbers = self.extract_data_vertical(worksheet, row, col)
+                            all_numbers.extend(numbers)
+                            logger.info(f"Extracted {len(numbers)} numbers from {sheet_name}!{worksheet.cell(row, col).coordinate} (fallback)")
+                        except Exception as e:
+                            logger.error(f"Error extracting numbers from {sheet_name}!{worksheet.cell(row, col).coordinate}: {e}")
+                            continue
                         
             except Exception as e:
                 logger.error(f"Error processing M-Textile sheet {sheet_name}: {e}")
