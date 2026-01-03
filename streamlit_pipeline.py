@@ -261,6 +261,74 @@ class StreamlitTSSPipeline:
             raise
         except Exception as e:
             raise TSConverterError(f"{step_name} failed: {str(e)}")
+    
+    def _call_data_mapper_cli(self, source_file: Path, step3_output: Path, output_dir: Path,
+                             output_filename: str) -> Path:
+        """
+        Helper method for Step 4 DataMapper - handles complex file dependencies
+        
+        Args:
+            source_file: Original input file for mapping
+            step3_output: Step3 output file 
+            output_dir: Session output directory
+            output_filename: Target output filename
+            
+        Returns:
+            Path to Step4 file in session directory
+        """
+        try:
+            # Security validation
+            self._validate_paths_security(source_file, step3_output, output_dir)
+            
+            # Create session output path
+            session_output = output_dir / output_filename
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            # DataMapper auto-detects step3 file, so we need to ensure it's findable
+            # Copy step3_output to expected location if needed
+            step3_name = step3_output.name
+            expected_step3_path = output_dir / step3_name
+            temp_step3_created = False
+            
+            if step3_output != expected_step3_path and not expected_step3_path.exists():
+                shutil.copy2(str(step3_output), str(expected_step3_path))
+                temp_step3_created = True
+                logger.info(f"Copied Step3 file for CLI detection: {step3_output} -> {expected_step3_path}")
+            
+            # Ensure output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Direct CLI module call - Single source of truth!
+            parent_dir = output_dir.parent  # Avoid double output directory
+            mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
+            cli_result = mapper.process_file(str(source_file), str(session_output))
+            
+            # Clean up temporary file if created
+            if temp_step3_created and expected_step3_path.exists():
+                expected_step3_path.unlink(missing_ok=True)
+                logger.info(f"Cleaned up temporary Step3 file: {expected_step3_path}")
+            
+            # Verify and return result
+            result_path = Path(cli_result)
+            if not result_path.exists():
+                raise TSConverterError(f"DataMapper claimed success but file not found: {result_path}")
+            
+            # Ensure output is at session location
+            if result_path != session_output:
+                shutil.move(str(result_path), str(session_output))
+                logger.info(f"Moved Step4 output to session location: {result_path} -> {session_output}")
+            
+            # Set secure permissions
+            session_output.chmod(0o600)
+            
+            logger.info(f"Step 4 (Data Mapping) completed successfully: {session_output}")
+            return session_output
+            
+        except SecurityError:
+            raise
+        except Exception as e:
+            raise TSConverterError(f"Step 4 (Data Mapping) failed: {str(e)}")
         
     def create_session_directory(self) -> Path:
         """Create unique session directory for file processing with security validation"""
@@ -635,87 +703,48 @@ class StreamlitTSSPipeline:
             raise TSConverterError(f"Step 1 failed: {str(e)}")
     
     def _run_step2(self, step1_output: Path, source_file: Path, output_dir: Path) -> Path:
-        """Run Step 2: Data Extraction using new M-Textile logic with article headers in columns"""
-        # Validate all paths for security
-        for path in [step1_output, source_file, output_dir]:
-            if not validate_path_security(path, self.temp_dir):
-                raise SecurityError(f"Path validation failed for {path}")
-                
-        with ResourceManager(self.temp_dir) as rm:
-            try:
-                extractor = step2_data_extraction.DataExtractor()
-                
-                # Use NEW M-Textile logic that places article headers in columns R-Y
-                logger.info(f"Using M-Textile extraction logic for Step 2")
-                output_file = extractor.process_m_textile_file(
-                    str(step1_output), 
-                    str(source_file)
-                )
-                
-                # Move output to session output directory
-                output_path = Path(output_file)
-                session_output = output_dir / output_path.name
-                
-                rm.add_temp_file(output_path)
-                output_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(output_path, session_output)
-                
-                logger.info(f"Step 2 completed successfully (M-Textile logic): {session_output}")
-                return session_output
-                
-            except Exception as e:
-                logger.error(f"Step 2 M-Textile processing error: {str(e)}")
-                
-                # Try fallback to graceful processing if M-Textile processing fails
-                try:
-                    logger.info("Attempting fallback to graceful processing...")
-                    output_file = extractor.process_file_with_fallbacks(
-                        str(step1_output), 
-                        str(source_file),
-                        allow_missing_headers=True
-                    )
-                    
-                    output_path = Path(output_file)
-                    session_output = output_dir / output_path.name
-                    
-                    rm.add_temp_file(output_path)
-                    shutil.copy2(output_path, session_output)
-                    
-                    logger.warning(f"Step 2 completed with graceful fallback (article headers may not be in columns): {session_output}")
-                    return session_output
-                    
-                except Exception as fallback_error:
-                    logger.error(f"Both M-Textile and graceful processing failed: {fallback_error}")
-                    
-                    # Try final fallback to regular processing
-                    try:
-                        logger.info("Attempting final fallback to regular processing...")
-                        output_file = extractor.process_file(str(step1_output), str(source_file))
-                        
-                        output_path = Path(output_file)
-                        session_output = output_dir / output_path.name
-                        
-                        rm.add_temp_file(output_path)
-                        shutil.copy2(output_path, session_output)
-                        
-                        logger.warning(f"Step 2 completed with final fallback (article headers may not be in columns): {session_output}")
-                        return session_output
-                        
-                    except Exception as final_error:
-                        logger.error(f"All Step 2 processing methods failed: {final_error}")
-                        # Add error context for monitoring
-                        global_error_handler._handle_final_error(
-                            final_error, "step2_data_extraction", 
-                            {'temp_files': [str(step1_output), str(source_file)]}
-                        )
-                        raise TSConverterError(f"Data extraction failed: {str(e)}")
-                
-                # Add error context for monitoring
-                global_error_handler._handle_final_error(
-                    e, "step2_data_extraction", 
-                    {'temp_files': [str(step1_output), str(source_file)]}
-                )
-                raise TSConverterError(f"Data extraction failed: {str(e)}")
+        """Run Step 2: Data Extraction - Direct CLI module call with security wrapper"""
+        try:
+            # Security validation using helper
+            self._validate_paths_security(step1_output, source_file, output_dir)
+            
+            # Create Step2 output filename
+            output_filename = step1_output.name.replace(" - Step1.xlsx", " - Step2.xlsx")
+            if not output_filename.endswith(" - Step2.xlsx"):
+                output_filename = step1_output.stem + " - Step2.xlsx"
+            
+            # Create explicit session output path
+            session_output = output_dir / output_filename
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            # Ensure output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Direct CLI module call with explicit output - Single source of truth!
+            extractor = step2_data_extraction.DataExtractor()
+            logger.info(f"Using M-Textile extraction logic for Step 2")
+            cli_result = extractor.process_m_textile_file(
+                str(step1_output), 
+                str(source_file),
+                str(session_output)
+            )
+            
+            # Verify result
+            result_path = Path(cli_result)
+            if not result_path.exists():
+                raise TSConverterError(f"DataExtractor claimed success but file not found: {result_path}")
+            
+            # Set secure permissions
+            result_path.chmod(0o600)
+            
+            logger.info(f"Step 2 (Data Extraction) completed successfully: {result_path}")
+            return result_path
+            
+        except SecurityError:
+            raise
+        except Exception as e:
+            raise TSConverterError(f"Step 2 failed: {str(e)}")
     
     def _run_step3(self, step2_output: Path, output_dir: Path) -> Path:
         """Run Step 3: Pre-mapping Fill - Direct CLI module call with security wrapper"""
@@ -736,224 +765,41 @@ class StreamlitTSSPipeline:
             raise TSConverterError(f"Step 3 failed: {str(e)}")
     
     def _run_step4(self, source_file: Path, step3_output: Path, output_dir: Path) -> Path:
-        """Run Step 4: Data Mapping with security validation (matches CLI step4_data_mapping.py)"""
+        """Run Step 4: Data Mapping - Direct CLI module call with security wrapper"""
         try:
-            # Security validation: validate all paths
-            for path in [source_file, step3_output, output_dir]:
-                if not validate_path_security(path, self.temp_dir):
-                    raise SecurityError(f"Path validation failed for {path}")
-            
-            # Create Step4 output path in session directory
-            session_output_name = step3_output.name.replace(" - Step3.xlsx", " - Step4.xlsx")
-            if not session_output_name.endswith(" - Step4.xlsx"):
+            # Create Step4 output filename
+            output_filename = step3_output.name.replace(" - Step3.xlsx", " - Step4.xlsx")
+            if not output_filename.endswith(" - Step4.xlsx"):
                 # Fallback if naming doesn't match expected pattern
-                session_output_name = step3_output.stem + " - Step4.xlsx"
+                output_filename = step3_output.stem + " - Step4.xlsx"
             
-            session_output = output_dir / session_output_name
-            if not validate_path_security(session_output, self.temp_dir):
-                raise SecurityError(f"Session output path validation failed: {session_output}")
-            
-            # DataMapper expects to auto-detect step3 file based on input file name
-            # But we have step3_output in a different location, so we need to ensure
-            # the mapper can find it. We'll use a custom approach:
-            
-            try:
-                # Get step3 file name and ensure it's in the same directory as session_output
-                step3_name = step3_output.name
-                expected_step3_path = output_dir / step3_name
-                
-                # Copy step3_output to expected location if it's not already there
-                temp_step3_created = False
-                if step3_output != expected_step3_path:
-                    if not expected_step3_path.exists():
-                        shutil.copy2(str(step3_output), str(expected_step3_path))
-                        temp_step3_created = True
-                        logger.info(f"Copied Step3 file for mapping: {step3_output} -> {expected_step3_path}")
-                    else:
-                        logger.info(f"Step3 file already exists at expected location: {expected_step3_path}")
-                
-                # Use DataMapper with session output directory as base
-                # This prevents double output directory creation
-                parent_dir = output_dir.parent  # Go up one level to avoid double output
-                mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
-                
-                # Process with explicit output file path
-                output_file = mapper.process_file(str(source_file), str(session_output))
-                
-                # Clean up temporary file if we created it
-                if temp_step3_created and expected_step3_path.exists() and expected_step3_path != step3_output:
-                    expected_step3_path.unlink(missing_ok=True)
-                    logger.info(f"Cleaned up temporary Step3 file: {expected_step3_path}")
-                
-                # Verify output
-                output_path = Path(output_file)
-                if output_path.exists():
-                    # Ensure output is at session location
-                    if output_path != session_output:
-                        shutil.move(str(output_path), str(session_output))
-                        logger.info(f"Moved Step4 output to session location: {output_path} -> {session_output}")
-                        
-                    session_output.chmod(0o600)  # Secure file permissions
-                    logger.info(f"Step 4 (Data Mapping) completed successfully: {session_output}")
-                    return session_output
-                else:
-                    raise TSConverterError(f"Step 4 output not created: {output_path}")
-                    
-            except Exception as e:
-                logger.error(f"Step 4 processing failed: {e}")
-                logger.error(f"Debug info - step3_output: {step3_output}")
-                logger.error(f"Debug info - output_dir: {output_dir}")
-                logger.error(f"Debug info - session_output: {session_output}")
-                raise TSConverterError(f"Step 4 failed: {str(e)}")
+            # Direct CLI module call using specialized helper - Single source of truth!
+            return self._call_data_mapper_cli(source_file, step3_output, output_dir, output_filename)
             
         except SecurityError:
             raise
         except Exception as e:
-            logger.error(f"Step 4 processing error: {e}")
             raise TSConverterError(f"Step 4 failed: {str(e)}")
     
     def _run_step5(self, step4_output: Path, output_dir: Path) -> Path:
-        """Run Step 5: Filter & Deduplicate with comprehensive file handling fix"""
+        """Run Step 5: Filter & Deduplicate - Direct CLI module call with security wrapper"""
         try:
-            # Security validation: validate all paths
-            for path in [step4_output, output_dir]:
-                if not validate_path_security(path, self.temp_dir):
-                    raise SecurityError(f"Path validation failed for {path}")
-            
-            # Create Step5 output directly in the session output directory
-            session_output_name = step4_output.name.replace(" - Step4.xlsx", " - Step5.xlsx")
-            if not session_output_name.endswith(" - Step5.xlsx"):
+            # Create Step5 output filename
+            output_filename = step4_output.name.replace(" - Step4.xlsx", " - Step5.xlsx")
+            if not output_filename.endswith(" - Step5.xlsx"):
                 # Fallback if naming doesn't match expected pattern
-                session_output_name = step4_output.stem + " - Step5.xlsx"
+                output_filename = step4_output.stem + " - Step5.xlsx"
             
-            session_output = output_dir / session_output_name
-            if not validate_path_security(session_output, self.temp_dir):
-                raise SecurityError(f"Session output path validation failed: {session_output}")
-            
-            logger.info(f"🚀 STEP 5 START: Processing {step4_output} -> {session_output}")
-            
-            # DETAILED LOGGING: Check initial state
-            logger.info(f"📁 Current working directory: {Path.cwd()}")
-            logger.info(f"📁 Step4 input file exists: {step4_output.exists()}")
-            logger.info(f"📁 Step4 input file size: {step4_output.stat().st_size if step4_output.exists() else 'N/A'}")
-            logger.info(f"📁 Session output directory exists: {output_dir.exists()}")
-            logger.info(f"📁 Target session output path: {session_output}")
-            logger.info(f"📁 Target session output parent exists: {session_output.parent.exists()}")
-            
-            # DIRECT FIX: Ensure the session output directory exists
-            logger.info(f"📂 Ensuring output directory exists: {output_dir}")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"📂 Output directory created/verified: {output_dir.exists()}")
-            
-            # Initialize DataFilter
-            logger.info(f"🔧 Initializing DataFilter...")
+            # Direct CLI module call using helper - Single source of truth!
             filter_dedup = step5_filter_deduplicate.DataFilter()
-            logger.info(f"🔧 DataFilter initialized:")
-            logger.info(f"   - DataFilter.base_dir: {filter_dedup.base_dir}")
-            logger.info(f"   - DataFilter.output_dir: {filter_dedup.output_dir}")
-            logger.info(f"   - DataFilter.output_dir exists: {Path(filter_dedup.output_dir).exists()}")
-            
-            try:
-                # CRITICAL: Pass the explicit session output path to process_file
-                logger.info(f"📞 Calling DataFilter.process_file with:")
-                logger.info(f"   📥 Input file: {step4_output}")
-                logger.info(f"   📤 Output file: {session_output}")
-                logger.info(f"   📥 Input exists: {step4_output.exists()}")
-                logger.info(f"   📤 Output parent exists: {session_output.parent.exists()}")
-                
-                # PRE-CALL DIRECTORY SNAPSHOT
-                logger.info(f"📷 PRE-CALL: Session output directory contents:")
-                if output_dir.exists():
-                    for item in output_dir.iterdir():
-                        logger.info(f"     - {item} ({'file' if item.is_file() else 'dir'})")
-                else:
-                    logger.info(f"     - Directory does not exist")
-                
-                # This should create the file directly at session_output location
-                logger.info(f"⚡ CALLING DataFilter.process_file...")
-                result_file = filter_dedup.process_file(str(step4_output), str(session_output))
-                logger.info(f"✅ DataFilter.process_file completed successfully!")
-                logger.info(f"📝 DataFilter returned path: {result_file}")
-                
-                # POST-CALL DIRECTORY SNAPSHOT
-                logger.info(f"📷 POST-CALL: Session output directory contents:")
-                if output_dir.exists():
-                    for item in output_dir.iterdir():
-                        logger.info(f"     - {item} ({'file' if item.is_file() else 'dir'}, size: {item.stat().st_size if item.is_file() else 'N/A'})")
-                else:
-                    logger.info(f"     - Directory does not exist")
-                
-                # Convert result to Path and verify
-                result_path = Path(result_file)
-                logger.info(f"🔍 Verifying result file:")
-                logger.info(f"   - Result path: {result_path}")
-                logger.info(f"   - Result absolute path: {result_path.absolute()}")
-                logger.info(f"   - File exists: {result_path.exists()}")
-                logger.info(f"   - Parent directory: {result_path.parent}")
-                logger.info(f"   - Parent exists: {result_path.parent.exists()}")
-                
-                if result_path.exists():
-                    file_size = result_path.stat().st_size
-                    logger.info(f"✅ Step 5 output verified at: {result_path}")
-                    logger.info(f"   - File size: {file_size} bytes")
-                    logger.info(f"   - Setting file permissions...")
-                    result_path.chmod(0o600)
-                    logger.info(f"   - Extracting statistics...")
-                    self._extract_step5_stats(result_path)
-                    logger.info(f"🎉 Step 5 completed successfully: {result_path}")
-                    return result_path
-                else:
-                    # COMPREHENSIVE DEBUGGING ON FAILURE
-                    logger.error(f"❌ DataFilter claimed success but file not found!")
-                    logger.error(f"   - Expected path: {result_path}")
-                    logger.error(f"   - Absolute path: {result_path.absolute()}")
-                    
-                    # Check all possible locations
-                    logger.info(f"🔍 SEARCHING ALL LOCATIONS:")
-                    
-                    # 1. Current working directory
-                    logger.info(f"📁 Current working directory: {Path.cwd()}")
-                    for item in Path.cwd().iterdir():
-                        if "Step5" in str(item):
-                            logger.info(f"   - Found Step5 item: {item}")
-                    
-                    # 2. DataFilter output directory
-                    filter_output_dir = Path(filter_dedup.output_dir)
-                    logger.info(f"📁 DataFilter output directory: {filter_output_dir}")
-                    if filter_output_dir.exists():
-                        for item in filter_output_dir.iterdir():
-                            logger.info(f"   - Found item: {item}")
-                    
-                    # 3. Session directory tree
-                    session_dir = output_dir.parent
-                    logger.info(f"📁 Session directory tree: {session_dir}")
-                    if session_dir.exists():
-                        for root, dirs, files in os.walk(session_dir):
-                            for file in files:
-                                file_path = Path(root) / file
-                                logger.info(f"   - Found file: {file_path}")
-                    
-                    raise TSConverterError(f"DataFilter claimed success but file not found: {result_path}")
-                    
-            except Exception as e:
-                logger.error(f"❌ DataFilter processing failed!")
-                logger.error(f"   - Exception: {e}")
-                logger.error(f"   - Exception type: {type(e).__name__}")
-                logger.error(f"   - Exception args: {e.args}")
-                
-                # Import traceback for full stack trace
-                import traceback
-                logger.error(f"   - Full traceback:\n{traceback.format_exc()}")
-                
-                raise TSConverterError(f"Step 5 processing failed: {str(e)}")
+            return self._call_cli_with_explicit_output(
+                filter_dedup, step4_output, output_dir, output_filename,
+                "Step 5 (Filter & Deduplicate)"
+            )
             
         except SecurityError:
             raise
-        except FileNotFoundError as e:
-            logger.error(f"Step 5 file not found: {e}")
-            raise TSConverterError(f"Step 5 failed - output file not found: {str(e)}")
         except Exception as e:
-            logger.error(f"Step 5 processing error: {e}")
             raise TSConverterError(f"Step 5 failed: {str(e)}")
     
     def _run_step6(self, step5_output: Path, output_dir: Path) -> Path:
