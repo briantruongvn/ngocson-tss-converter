@@ -318,6 +318,52 @@ class StreamlitTSSPipeline:
         except Exception as e:
             raise TSConverterError(f"Step 2 (Data Extraction) failed: {str(e)}")
     
+    def _call_pre_mapping_filler_cli(self, source_file: Path, output_dir: Path, output_filename: str) -> Path:
+        """
+        Helper method for Step 3 PreMappingFiller - handles single file processing
+        
+        Step 3 PreMappingFiller processes source file to fill empty cells with vertical inheritance.
+        
+        Args:
+            source_file: Source Excel file to process
+            output_dir: Session output directory
+            output_filename: Target output filename
+            
+        Returns:
+            Path to Step3 file in session directory
+        """
+        try:
+            # Security validation for all paths
+            self._validate_paths_security(source_file, output_dir)
+            
+            # Create session output path
+            session_output = output_dir / output_filename
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            # Ensure output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Direct CLI module call - Single source of truth!
+            filler = step3_pre_mapping_fill.PreMappingFiller()
+            cli_result = filler.process_file(str(source_file), str(session_output))
+            
+            # Verify result
+            result_path = Path(cli_result)
+            if not result_path.exists():
+                raise TSConverterError(f"PreMappingFiller claimed success but file not found: {result_path}")
+            
+            # Set secure permissions
+            result_path.chmod(0o600)
+            
+            logger.info(f"Step 3 (Pre-mapping Fill) completed successfully: {result_path}")
+            return result_path
+            
+        except SecurityError:
+            raise
+        except Exception as e:
+            raise TSConverterError(f"Step 3 (Pre-mapping Fill) failed: {str(e)}")
+    
     def _call_data_mapper_cli(self, source_file: Path, step2_output: Path, step3_output: Path, 
                              output_dir: Path, output_filename: str) -> Path:
         """
@@ -372,9 +418,14 @@ class StreamlitTSSPipeline:
             
             # Direct CLI module call - Single source of truth!
             # Step 4 DataMapper expects Step3 output (filled source) as input
-            # It auto-detects Step2 template based on filename
-            parent_dir = output_dir.parent  # Avoid double output directory
-            mapper = step4_data_mapping.DataMapper(base_dir=str(parent_dir))
+            # It auto-detects Step2 template based on filename  
+            # CRITICAL FIX: Use output_dir.parent as base_dir so DataMapper's output_dir = session output_dir
+            # This ensures DataMapper finds Step2 file in correct session directory
+            mapper = step4_data_mapping.DataMapper(base_dir=str(output_dir.parent))
+            
+            # Override the auto-detected output_dir to use session directory
+            mapper.output_dir = output_dir
+            
             cli_result = mapper.process_file(str(step3_output), str(session_output))
             
             # Clean up temporary files if created
@@ -809,16 +860,11 @@ class StreamlitTSSPipeline:
             Path to Step3 output (source file with filled data)
         """
         try:
-            # Security validation using helper
-            self._validate_paths_security(source_file, output_dir)
+            # Create Step3 output filename
+            output_filename = f"{source_file.stem} - Step3.xlsx"
             
-            # Direct CLI module call - Single source of truth!
-            # Step 3 processes SOURCE FILE (not Step2 output)
-            filler = step3_pre_mapping_fill.PreMappingFiller()
-            cli_output = filler.process_file(str(source_file))
-            
-            # Handle output file using helper
-            return self._handle_cli_output_file(cli_output, output_dir, "Step 3 (Pre-mapping Fill)")
+            # Direct CLI module call using specialized helper - Single source of truth!
+            return self._call_pre_mapping_filler_cli(source_file, output_dir, output_filename)
             
         except SecurityError:
             raise
