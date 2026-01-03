@@ -262,6 +262,62 @@ class StreamlitTSSPipeline:
         except Exception as e:
             raise TSConverterError(f"{step_name} failed: {str(e)}")
     
+    def _call_data_extractor_cli(self, step1_output: Path, source_file: Path, 
+                               output_dir: Path, output_filename: str) -> Path:
+        """
+        Helper method for Step 2 DataExtractor - handles dual file dependencies
+        
+        Step 2 DataExtractor needs access to:
+        - step1_output: Template file (positional argument)
+        - source_file: Source data file (-s argument)
+        
+        Args:
+            step1_output: Step1 template file
+            source_file: Source data file for extraction
+            output_dir: Session output directory
+            output_filename: Target output filename
+            
+        Returns:
+            Path to Step2 file in session directory
+        """
+        try:
+            # Security validation for all paths
+            self._validate_paths_security(step1_output, source_file, output_dir)
+            
+            # Create session output path
+            session_output = output_dir / output_filename
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            # Ensure output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Direct CLI module call - Single source of truth!
+            # This matches CLI: step2_data_extraction.py step1_file -s source_file
+            # CLI uses M-Textile specific logic, so Streamlit should match
+            extractor = step2_data_extraction.DataExtractor()
+            cli_result = extractor.process_m_textile_file(
+                str(step1_output), 
+                str(source_file),
+                str(session_output)
+            )
+            
+            # Verify result
+            result_path = Path(cli_result)
+            if not result_path.exists():
+                raise TSConverterError(f"DataExtractor claimed success but file not found: {result_path}")
+            
+            # Set secure permissions
+            result_path.chmod(0o600)
+            
+            logger.info(f"Step 2 (Data Extraction) completed successfully: {result_path}")
+            return result_path
+            
+        except SecurityError:
+            raise
+        except Exception as e:
+            raise TSConverterError(f"Step 2 (Data Extraction) failed: {str(e)}")
+    
     def _call_data_mapper_cli(self, source_file: Path, step2_output: Path, step3_output: Path, 
                              output_dir: Path, output_filename: str) -> Path:
         """
@@ -726,41 +782,13 @@ class StreamlitTSSPipeline:
     def _run_step2(self, step1_output: Path, source_file: Path, output_dir: Path) -> Path:
         """Run Step 2: Data Extraction - Direct CLI module call with security wrapper"""
         try:
-            # Security validation using helper
-            self._validate_paths_security(step1_output, source_file, output_dir)
-            
             # Create Step2 output filename
             output_filename = step1_output.name.replace(" - Step1.xlsx", " - Step2.xlsx")
             if not output_filename.endswith(" - Step2.xlsx"):
                 output_filename = step1_output.stem + " - Step2.xlsx"
             
-            # Create explicit session output path
-            session_output = output_dir / output_filename
-            if not validate_path_security(session_output, self.temp_dir):
-                raise SecurityError(f"Session output path validation failed: {session_output}")
-            
-            # Ensure output directory exists
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Direct CLI module call with explicit output - Single source of truth!
-            extractor = step2_data_extraction.DataExtractor()
-            logger.info(f"Using M-Textile extraction logic for Step 2")
-            cli_result = extractor.process_m_textile_file(
-                str(step1_output), 
-                str(source_file),
-                str(session_output)
-            )
-            
-            # Verify result
-            result_path = Path(cli_result)
-            if not result_path.exists():
-                raise TSConverterError(f"DataExtractor claimed success but file not found: {result_path}")
-            
-            # Set secure permissions
-            result_path.chmod(0o600)
-            
-            logger.info(f"Step 2 (Data Extraction) completed successfully: {result_path}")
-            return result_path
+            # Direct CLI module call using specialized helper - Single source of truth!
+            return self._call_data_extractor_cli(step1_output, source_file, output_dir, output_filename)
             
         except SecurityError:
             raise
