@@ -165,6 +165,102 @@ class StreamlitTSSPipeline:
         
         # Initialize session manager
         session_manager.initialize_session_state()
+    
+    def _validate_paths_security(self, *paths: Path) -> None:
+        """Helper method to validate multiple paths for security"""
+        for path in paths:
+            if not validate_path_security(path, self.temp_dir):
+                raise SecurityError(f"Path validation failed for {path}")
+    
+    def _handle_cli_output_file(self, cli_output_path: str, output_dir: Path, 
+                               step_name: str = "", secure_permissions: bool = True) -> Path:
+        """
+        Helper method to handle CLI output file with security validation and proper session management
+        
+        Args:
+            cli_output_path: Path returned from CLI module
+            output_dir: Session output directory
+            step_name: Step name for logging (optional)
+            secure_permissions: Whether to set secure file permissions
+            
+        Returns:
+            Path to file in session output directory
+        """
+        try:
+            # Convert CLI output to Path object
+            cli_path = Path(cli_output_path)
+            
+            # Security validation for CLI generated path
+            if not validate_path_security(cli_path, Path.cwd()):
+                raise SecurityError(f"CLI generated output path validation failed: {cli_path}")
+            
+            # Generate session output path
+            session_output = output_dir / cli_path.name
+            
+            # Security validation for session output path  
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            # Move CLI output to session directory
+            if cli_path != session_output:
+                shutil.move(str(cli_path), str(session_output))
+                logger.info(f"Moved {step_name} output to session location: {cli_path} -> {session_output}")
+            
+            # Set secure file permissions if requested
+            if secure_permissions:
+                session_output.chmod(0o600)
+            
+            logger.info(f"{step_name} completed successfully: {session_output}")
+            return session_output
+            
+        except Exception as e:
+            raise TSConverterError(f"Output file handling failed for {step_name}: {str(e)}")
+    
+    def _call_cli_with_explicit_output(self, cli_instance, input_file: Path, output_dir: Path,
+                                     output_filename: str, step_name: str) -> Path:
+        """
+        Helper method for CLI calls that need explicit output path (Step 5, 6)
+        
+        Args:
+            cli_instance: CLI module instance to call
+            input_file: Input file path
+            output_dir: Session output directory
+            output_filename: Explicit output filename
+            step_name: Step name for logging
+            
+        Returns:
+            Path to file in session output directory
+        """
+        try:
+            # Security validation
+            self._validate_paths_security(input_file, output_dir)
+            
+            # Create explicit session output path
+            session_output = output_dir / output_filename
+            if not validate_path_security(session_output, self.temp_dir):
+                raise SecurityError(f"Session output path validation failed: {session_output}")
+            
+            # Ensure output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Call CLI with explicit output path
+            cli_result = cli_instance.process_file(str(input_file), str(session_output))
+            
+            # Verify result (CLI should have created file at session_output)
+            result_path = Path(cli_result)
+            if not result_path.exists():
+                raise TSConverterError(f"CLI claimed success but file not found: {result_path}")
+            
+            # Set secure permissions
+            result_path.chmod(0o600)
+            
+            logger.info(f"{step_name} completed successfully: {result_path}")
+            return result_path
+            
+        except SecurityError:
+            raise
+        except Exception as e:
+            raise TSConverterError(f"{step_name} failed: {str(e)}")
         
     def create_session_directory(self) -> Path:
         """Create unique session directory for file processing with security validation"""
@@ -521,30 +617,18 @@ class StreamlitTSSPipeline:
             return False, None, self.processing_stats
     
     def _run_step1(self, input_file: Path, output_dir: Path) -> Path:
-        """Run Step 1: Template Creation with security validation"""
+        """Run Step 1: Template Creation - Direct CLI module call with security wrapper"""
         try:
-            # Security validation: validate all paths
-            if not validate_path_security(input_file, self.temp_dir):
-                raise SecurityError(f"Input file path validation failed: {input_file}")
-            if not validate_path_security(output_dir, self.temp_dir):
-                raise SecurityError(f"Output directory path validation failed: {output_dir}")
-                
+            # Security validation using helper
+            self._validate_paths_security(input_file, output_dir)
+            
+            # Direct CLI module call - Single source of truth!
             creator = step1_template_creation.TemplateCreator()
-            output_file = creator.create_template(str(input_file))
+            cli_output = creator.create_template(str(input_file))
             
-            # Move output to session output directory with validation
-            output_path = Path(output_file)
-            if not validate_path_security(output_path, Path.cwd()):
-                raise SecurityError(f"Generated output path validation failed: {output_path}")
-                
-            session_output = output_dir / output_path.name
-            if not validate_path_security(session_output, self.temp_dir):
-                raise SecurityError(f"Session output path validation failed: {session_output}")
-                
-            shutil.move(output_path, session_output)
-            session_output.chmod(0o600)  # Secure file permissions
+            # Handle output file using helper
+            return self._handle_cli_output_file(cli_output, output_dir, "Step 1 (Template Creation)")
             
-            return session_output
         except SecurityError:
             raise
         except Exception as e:
@@ -634,30 +718,18 @@ class StreamlitTSSPipeline:
                 raise TSConverterError(f"Data extraction failed: {str(e)}")
     
     def _run_step3(self, step2_output: Path, output_dir: Path) -> Path:
-        """Run Step 3: Pre-mapping Fill with security validation (matches CLI step3_pre_mapping_fill.py)"""
+        """Run Step 3: Pre-mapping Fill - Direct CLI module call with security wrapper"""
         try:
-            # Security validation: validate all paths
-            for path in [step2_output, output_dir]:
-                if not validate_path_security(path, self.temp_dir):
-                    raise SecurityError(f"Path validation failed for {path}")
-                    
+            # Security validation using helper
+            self._validate_paths_security(step2_output, output_dir)
+            
+            # Direct CLI module call - Single source of truth!
             filler = step3_pre_mapping_fill.PreMappingFiller()
-            output_file = filler.process_file(str(step2_output))
+            cli_output = filler.process_file(str(step2_output))
             
-            # Move output to session output directory with validation
-            output_path = Path(output_file)
-            if not validate_path_security(output_path, Path.cwd()):
-                raise SecurityError(f"Generated output path validation failed: {output_path}")
-                
-            session_output = output_dir / output_path.name
-            if not validate_path_security(session_output, self.temp_dir):
-                raise SecurityError(f"Session output path validation failed: {session_output}")
-                
-            shutil.move(output_path, session_output)
-            session_output.chmod(0o600)  # Secure file permissions
+            # Handle output file using helper
+            return self._handle_cli_output_file(cli_output, output_dir, "Step 3 (Pre-mapping Fill)")
             
-            logger.info(f"Step 3 (Pre-mapping Fill) completed successfully: {session_output}")
-            return session_output
         except SecurityError:
             raise
         except Exception as e:
@@ -885,84 +957,22 @@ class StreamlitTSSPipeline:
             raise TSConverterError(f"Step 5 failed: {str(e)}")
     
     def _run_step6(self, step5_output: Path, output_dir: Path) -> Path:
-        """Run Step 6: Article Cross-Reference with security validation"""
+        """Run Step 6: Article Cross-Reference - Direct CLI module call with security wrapper"""
         try:
-            # Security validation: validate all paths
-            for path in [step5_output, output_dir]:
-                if not validate_path_security(path, self.temp_dir):
-                    raise SecurityError(f"Path validation failed for {path}")
-            
-            # Create Step6 output with descriptive name in the session output directory
+            # Create Step6 output with descriptive name
             base_name = step5_output.stem.replace(" - Step5", "")
-            session_output_name = f"Standard Internal TSS - {base_name}.xlsx"
+            output_filename = f"Standard Internal TSS - {base_name}.xlsx"
             
-            session_output = output_dir / session_output_name
-            if not validate_path_security(session_output, self.temp_dir):
-                raise SecurityError(f"Session output path validation failed: {session_output}")
-            
-            logger.info(f"🚀 STEP 6 START: Processing {step5_output} -> {session_output}")
-            
-            # DETAILED LOGGING: Check initial state
-            logger.info(f"📁 Step5 input file exists: {step5_output.exists()}")
-            logger.info(f"📁 Step5 input file size: {step5_output.stat().st_size if step5_output.exists() else 'N/A'}")
-            logger.info(f"📁 Session output directory exists: {output_dir.exists()}")
-            logger.info(f"📁 Target session output path: {session_output}")
-            
-            # Ensure the session output directory exists
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Initialize ArticleCrossReference
-            logger.info(f"🔧 Initializing ArticleCrossReference...")
+            # Direct CLI module call using helper - Single source of truth!
             crossref = step6_article_crossref.ArticleCrossReference()
-            logger.info(f"🔧 ArticleCrossReference initialized")
-            
-            try:
-                # CRITICAL: Pass the explicit session output path to process_file
-                logger.info(f"📞 Calling ArticleCrossReference.process_file with:")
-                logger.info(f"   📥 Input file: {step5_output}")
-                logger.info(f"   📤 Output file: {session_output}")
-                
-                # This should create the file directly at session_output location
-                logger.info(f"⚡ CALLING ArticleCrossReference.process_file...")
-                result_file = crossref.process_file(str(step5_output), str(session_output))
-                logger.info(f"✅ ArticleCrossReference.process_file completed successfully!")
-                logger.info(f"📝 ArticleCrossReference returned path: {result_file}")
-                
-                # Convert result to Path and verify
-                result_path = Path(result_file)
-                logger.info(f"🔍 Verifying result file:")
-                logger.info(f"   - Result path: {result_path}")
-                logger.info(f"   - File exists: {result_path.exists()}")
-                
-                if result_path.exists():
-                    file_size = result_path.stat().st_size
-                    logger.info(f"✅ Step 6 output verified at: {result_path}")
-                    logger.info(f"   - File size: {file_size} bytes")
-                    logger.info(f"   - Setting file permissions...")
-                    result_path.chmod(0o600)
-                    logger.info(f"🎉 Step 6 completed successfully: {result_path}")
-                    return result_path
-                else:
-                    raise TSConverterError(f"ArticleCrossReference claimed success but file not found: {result_path}")
-                    
-            except Exception as e:
-                logger.error(f"❌ ArticleCrossReference processing failed!")
-                logger.error(f"   - Exception: {e}")
-                logger.error(f"   - Exception type: {type(e).__name__}")
-                
-                # Import traceback for full stack trace
-                import traceback
-                logger.error(f"   - Full traceback:\n{traceback.format_exc()}")
-                
-                raise TSConverterError(f"Step 6 processing failed: {str(e)}")
+            return self._call_cli_with_explicit_output(
+                crossref, step5_output, output_dir, output_filename,
+                "Step 6 (Article Cross-Reference)"
+            )
             
         except SecurityError:
             raise
-        except FileNotFoundError as e:
-            logger.error(f"Step 6 file not found: {e}")
-            raise TSConverterError(f"Step 6 failed - output file not found: {str(e)}")
         except Exception as e:
-            logger.error(f"Step 6 processing error: {e}")
             raise TSConverterError(f"Step 6 failed: {str(e)}")
     
     def _extract_step5_stats(self, output_file: Path):
