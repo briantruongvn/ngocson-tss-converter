@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, List, Tuple, Union
 from pathlib import Path
 import time
 import logging
+from datetime import datetime
 
 from config_streamlit import get_custom_css, get_step_config, STREAMLIT_CONFIG
 
@@ -165,7 +166,10 @@ def render_file_upload_area() -> Optional[bytes]:
         render_info_message(
             f"✅ File uploaded: {uploaded_file.name} ({file_size_mb:.1f}MB)"
         )
-        return uploaded_file.getvalue()
+        return {
+            'data': uploaded_file.getvalue(),
+            'original_name': uploaded_file.name
+        }
     
     return None
 
@@ -255,6 +259,29 @@ def render_progress_section(current_step: int = 0, step_status: Dict[str, str] =
                 </div>
             """, unsafe_allow_html=True)
 
+def generate_download_filename(original_name: Optional[str] = None) -> str:
+    """
+    Generate download filename in format: [filename]-converted-[time].xlsx
+    
+    Args:
+        original_name: Original filename from upload
+        
+    Returns:
+        Formatted filename string
+    """
+    # Generate timestamp in format YYYYMMDD-HHMMSS
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    
+    if original_name:
+        # Remove .xlsx extension if present to avoid double extension
+        clean_name = original_name
+        if clean_name.lower().endswith('.xlsx'):
+            clean_name = clean_name[:-5]
+        return f"{clean_name}-converted-{timestamp}.xlsx"
+    else:
+        # Fallback to current format if no original name
+        return f"TSS_Converted_{timestamp}.xlsx"
+
 def render_download_section(output_file_path: Optional[Union[str, Path]] = None, 
                           processing_stats: Optional[Dict[str, Any]] = None):
     """
@@ -292,7 +319,13 @@ def render_download_section(output_file_path: Optional[Union[str, Path]] = None,
             with open(file_path, "rb") as file:
                 file_data = file.read()
             
-            download_filename = f"TSS_Converted_{int(time.time())}.xlsx"
+            # Get original filename from session state
+            original_name = None
+            if hasattr(st, 'session_state') and st.session_state.get('uploaded_file_info'):
+                original_name = st.session_state.uploaded_file_info.get('original_name')
+            
+            # Generate download filename with new format
+            download_filename = generate_download_filename(original_name)
             
             st.download_button(
                 label="📥 Download Converted File",
