@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 
 from config_streamlit import get_custom_css, get_step_config, STREAMLIT_CONFIG
+from common.config import get_clean_basename
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -134,10 +135,10 @@ def render_app_header(compact: bool = False):
             </div>
         """, unsafe_allow_html=True)
 
-def render_file_upload_area() -> Optional[Dict[str, Any]]:
+def render_file_upload_area() -> Optional[bytes]:
     """
     Render compact file upload area with validation
-    Returns dict with 'data' (bytes) and 'original_name' (str) if valid
+    Returns uploaded file bytes if valid
     """
     st.markdown("""
         <div class="upload-area-compact">
@@ -166,10 +167,7 @@ def render_file_upload_area() -> Optional[Dict[str, Any]]:
         render_info_message(
             f"✅ File uploaded: {uploaded_file.name} ({file_size_mb:.1f}MB)"
         )
-        return {
-            'data': uploaded_file.getvalue(),
-            'original_name': uploaded_file.name
-        }
+        return uploaded_file.getvalue()
     
     return None
 
@@ -319,21 +317,9 @@ def render_download_section(output_file_path: Optional[Union[str, Path]] = None,
             with open(file_path, "rb") as file:
                 file_data = file.read()
             
-            # Get original filename from session state
-            original_name = None
-            logger.debug("🔍 Checking session state for original filename...")
-            
-            if hasattr(st, 'session_state'):
-                logger.debug(f"✅ session_state available")
-                uploaded_file_info = st.session_state.get('uploaded_file_info')
-                if uploaded_file_info:
-                    logger.debug(f"✅ uploaded_file_info found: {uploaded_file_info.keys()}")
-                    original_name = uploaded_file_info.get('original_name')
-                    logger.debug(f"✅ original_name retrieved: {original_name}")
-                else:
-                    logger.debug("❌ uploaded_file_info not found in session_state")
-            else:
-                logger.debug("❌ session_state not available")
+            # Extract original filename from output file path (reliable approach)
+            original_name = get_clean_basename(file_path) if file_path else None
+            logger.info(f"📥 Extracted original name from file path: {original_name}")
             
             # Generate download filename with new format
             download_filename = generate_download_filename(original_name)
